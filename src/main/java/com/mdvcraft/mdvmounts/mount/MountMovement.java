@@ -14,10 +14,9 @@ public final class MountMovement {
 
   private static final double DEFAULT_JUMP_STRENGTH = 0.42D;
 
-  // Vanilla-like rider input factors used by Minecraft mounted movement:
-  // backwards is noticeably slower and strafing is reduced.
-  private static final double BACKWARD_MULTIPLIER = 0.25D;
-  private static final double STRAFE_MULTIPLIER = 0.50D;
+  private static final double DEFAULT_FORWARD_MULTIPLIER = 1.00D;
+  private static final double DEFAULT_BACKWARD_MULTIPLIER = 0.25D;
+  private static final double DEFAULT_LATERAL_MULTIPLIER = 0.50D;
 
   private final MDVMountsPlugin plugin;
 
@@ -30,6 +29,13 @@ public final class MountMovement {
   private boolean multiplyVerticalByJumpStrength;
   private double verticalSpeedMultiplier;
   private int attributeRefreshTicks;
+
+  // One tiny fixed array per setting: no HashMap lookup and no YAML read in
+  // the movement loop. Values are loaded only on /mdvmounts reload.
+  private final double[] forwardMultipliers = new double[MountType.values().length];
+  private final double[] backwardMultipliers = new double[MountType.values().length];
+  private final double[] lateralMultipliers = new double[MountType.values().length];
+  private final boolean[] normalizeDiagonal = new boolean[MountType.values().length];
 
   public MountMovement(MDVMountsPlugin plugin) {
     this.plugin = plugin;
@@ -63,6 +69,8 @@ public final class MountMovement {
     attributeRefreshTicks = Math.max(1, plugin.getConfig().getInt(
         "performance.attribute-refresh-ticks",
         10));
+
+    loadMovementProfiles();
 
     verticalDismountTaps = Math.max(1, plugin.getConfig().getInt(
         "control.vertical-dismount.taps",
@@ -207,7 +215,7 @@ public final class MountMovement {
     leaveFreeMovement(session);
 
     Vector horizontal = horizontalVelocity(
-        session.player(),
+        session,
         input,
         session.cachedMovementSpeed());
 
@@ -250,7 +258,7 @@ public final class MountMovement {
     }
 
     Vector horizontal = horizontalVelocity(
-        session.player(),
+        session,
         input,
         session.cachedMovementSpeed());
 
@@ -301,51 +309,82 @@ public final class MountMovement {
   }
 
   /**
-   * Returns the requested horizontal velocity using vanilla-like rider input
-   * factors. Returns null when there is no horizontal input, avoiding a Vector
-   * allocation on idle ticks.
+   * Returns the requested horizontal velocity using the cached profile for the
+   * session type. Native GROUND horses never reach this method: Minecraft
+   * handles their movement itself.
    */
-  private Vector horizontalVelocity(Player player, Input input, double speed) {
+  private Vector horizontalVelocity(MountSession session, Input input, double speed) {
     if (speed <= 0.0D) {
       return null;
     }
 
+    int profile = session.type().ordinal();
     double forwardInput = 0.0D;
 
     if (input.isForward() && !input.isBackward()) {
-      forwardInput = 1.0D;
+      forwardInput = forwardMultipliers[profile];
     } else if (input.isBackward() && !input.isForward()) {
-      forwardInput = -BACKWARD_MULTIPLIER;
+      forwardInput = -backwardMultipliers[profile];
     }
 
     double strafeInput = 0.0D;
 
     if (input.isLeft() && !input.isRight()) {
-      strafeInput = STRAFE_MULTIPLIER;
+      strafeInput = lateralMultipliers[profile];
     } else if (input.isRight() && !input.isLeft()) {
-      strafeInput = -STRAFE_MULTIPLIER;
+      strafeInput = -lateralMultipliers[profile];
     }
 
     if (forwardInput == 0.0D && strafeInput == 0.0D) {
       return null;
     }
 
-    // Clamp diagonal input to avoid an artificial diagonal speed boost.
-    double inputLengthSquared = forwardInput * forwardInput + strafeInput * strafeInput;
-    if (inputLengthSquared > 1.0D) {
-      double scale = 1.0D / Math.sqrt(inputLengthSquared);
-      forwardInput *= scale;
-      strafeInput *= scale;
+    // Optional diagonal normalization. It preserves the strongest configured
+    // axis percentage, so values above 100% still work as expected.
+    if (normalizeDiagonal[profile] && forwardInput != 0.0D && strafeInput != 0.0D) {
+      double magnitude = Math.hypot(forwardInput, strafeInput);
+      double cap = Math.max(Math.abs(forwardInput), Math.abs(strafeInput));
+      if (magnitude > cap && cap > 0.0D) {
+        double scale = cap / magnitude;
+        forwardInput *= scale;
+        strafeInput *= scale;
+      }
     }
 
-    double yaw = Math.toRadians(player.getYaw());
-    double sin = Math.sin(yaw);
-    double cos = Math.cos(yaw);
+    Player player = session.player();
+    session.ensureDirectionCache(player.getYaw());
+    double sin = session.cachedYawSin();
+    double cos = session.cachedYawCos();
 
     double x = (-sin * forwardInput + cos * strafeInput) * speed;
     double z = ( cos * forwardInput + sin * strafeInput) * speed;
 
     return new Vector(x, 0.0D, z);
+  }
+
+  private void loadMovementProfiles() {
+    loadMovementProfile(MountType.GROUND, "ground");
+    loadMovementProfile(MountType.FLYING, "flying");
+    loadMovementProfile(MountType.AQUATIC, "aquatic");
+    loadMovementProfile(MountType.LAVA, "lava");
+    loadMovementProfile(MountType.JUMPER, "jumper");
+  }
+
+  private void loadMovementProfile(MountType type, String key) {
+    int index = type.ordinal();
+    String base = "control.movement-percentages." + key + ".";
+
+    forwardMultipliers[index] = percentToMultiplier(
+        plugin.getConfig().getDouble(base + "forward", DEFAULT_FORWARD_MULTIPLIER * 100.0D));
+    backwardMultipliers[index] = percentToMultiplier(
+        plugin.getConfig().getDouble(base + "backward", DEFAULT_BACKWARD_MULTIPLIER * 100.0D));
+    lateralMultipliers[index] = percentToMultiplier(
+        plugin.getConfig().getDouble(base + "lateral", DEFAULT_LATERAL_MULTIPLIER * 100.0D));
+    normalizeDiagonal[index] = plugin.getConfig().getBoolean(base + "normalize-diagonal", true);
+  }
+
+  private double percentToMultiplier(double percent) {
+    return Math.max(0.0D, percent) / 100.0D;
   }
 
   private void enterFreeMovement(MountSession session) {

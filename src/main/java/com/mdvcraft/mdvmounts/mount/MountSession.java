@@ -24,6 +24,9 @@ public final class MountSession {
 
     // Small runtime state used to avoid redundant Bukkit calls.
     private float lastAppliedYaw = Float.NaN;
+    private float cachedDirectionYaw = Float.NaN;
+    private double cachedYawSin;
+    private double cachedYawCos = 1.0D;
     private boolean freeMovementMode;
     private boolean manualInputActive;
 
@@ -109,6 +112,28 @@ public final class MountSession {
         return true;
     }
 
+
+    /**
+     * Cache sin/cos for horizontal steering. If the rider keeps the same yaw,
+     * manual mounts avoid two trigonometric calculations every server tick.
+     */
+    public void ensureDirectionCache(float yaw) {
+        if (Float.compare(cachedDirectionYaw, yaw) == 0) {
+            return;
+        }
+        cachedDirectionYaw = yaw;
+        double radians = Math.toRadians(yaw);
+        cachedYawSin = Math.sin(radians);
+        cachedYawCos = Math.cos(radians);
+    }
+
+    public double cachedYawSin() {
+        return cachedYawSin;
+    }
+
+    public double cachedYawCos() {
+        return cachedYawCos;
+    }
     public boolean freeMovementMode() {
         return freeMovementMode;
     }

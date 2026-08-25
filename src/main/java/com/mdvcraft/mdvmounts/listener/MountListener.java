@@ -12,6 +12,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityDismountEvent;
+import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.EquipmentSlot;
@@ -25,8 +26,24 @@ public final class MountListener implements Listener {
         this.mountManager = mountManager;
     }
 
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    // MythicMobs/LibsDisguises or the underlying vanilla horse interaction can
+    // arrive already cancelled. MDV tagged mounts are ours to handle, so we
+    // intentionally still inspect cancelled interactions. This is especially
+    // important for HORSE mobs using a visual Disguise (COW, SILVERFISH, etc.).
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onInteract(PlayerInteractEntityEvent event) {
+        handleInteract(event);
+    }
+
+    // A disguise can make the client send the more precise INTERACT_AT packet.
+    // Paper exposes it as a different event with its own handler list, so we
+    // listen to it explicitly as well.
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onInteractAt(PlayerInteractAtEntityEvent event) {
+        handleInteract(event);
+    }
+
+    private void handleInteract(PlayerInteractEntityEvent event) {
         if (event.getHand() != EquipmentSlot.HAND) {
             return;
         }
@@ -39,6 +56,17 @@ public final class MountListener implements Listener {
         }
 
         event.setCancelled(true);
+
+        // Some clients/plugins can cause both interaction variants for the
+        // same click. If the player is already riding exactly this MDV mount,
+        // do nothing instead of rebuilding the session.
+        MountSession current = mountManager.getSession(player);
+        if (current != null
+                && current.mount().getUniqueId().equals(clicked.getUniqueId())
+                && player.getVehicle() != null
+                && player.getVehicle().getUniqueId().equals(clicked.getUniqueId())) {
+            return;
+        }
 
         if (!player.hasPermission("mdvmounts.use")) {
             message(player, "messages.no-permission", "&cNo tienes permiso para usar monturas.");

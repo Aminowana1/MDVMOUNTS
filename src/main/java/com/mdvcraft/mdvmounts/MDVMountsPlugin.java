@@ -24,7 +24,7 @@ public final class MDVMountsPlugin extends JavaPlugin {
         }
 
         mountManager.start();
-        getLogger().info("MDVMounts 1.0.1 habilitado. Control vanilla para caballos y controlador manual optimizado.");
+        getLogger().info("MDVMounts 1.0.2 habilitado. Caballos vanilla incluso con Disguise y perfiles de velocidad configurables.");
     }
 
     @Override

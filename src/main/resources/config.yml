@@ -1,5 +1,5 @@
 # ==========================================================
-# MDVMounts 1.0.1
+# MDVMounts 1.0.2
 # Controlador ligero de monturas para MDVCRAFT.
 # ==========================================================
 #
@@ -33,6 +33,45 @@ control:
 
   # Solo se aplica a monturas manuales. Los caballos vanilla ya rotan solos.
   rotate-mount-with-rider: true
+
+  # Porcentajes de movimiento horizontal por controlador.
+  # 100 = velocidad MovementSpeed completa del MythicMob.
+  # 50  = mitad. 25 = un cuarto. También podés usar >100 si querés.
+  #
+  # IMPORTANTE: un HORSE/DONKEY/MULE/etc. con tag GROUND usa el control
+  # VANILLA real de Minecraft, aunque tenga Disguise. En esos caballos los
+  # porcentajes de `ground` NO se aplican: los usa Minecraft directamente.
+  # `ground` sí controla vacas, cerdos, etc. marcados como terrestres.
+  movement-percentages:
+    ground:
+      forward: 100.0
+      backward: 25.0
+      lateral: 50.0
+      normalize-diagonal: true
+
+    flying:
+      forward: 100.0
+      backward: 25.0
+      lateral: 50.0
+      normalize-diagonal: true
+
+    aquatic:
+      forward: 100.0
+      backward: 25.0
+      lateral: 50.0
+      normalize-diagonal: true
+
+    lava:
+      forward: 100.0
+      backward: 25.0
+      lateral: 50.0
+      normalize-diagonal: true
+
+    jumper:
+      forward: 100.0
+      backward: 25.0
+      lateral: 50.0
+      normalize-diagonal: true
 
   vertical-speed:
     # Velocidad vertical base de las monturas tridimensionales.

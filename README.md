@@ -1,4 +1,11 @@
-# MDVMounts 1.0.1
+# MDVMounts 1.0.2
+
+## 1.0.2
+
+- Los caballos terrestres reales (`HORSE`, `DONKEY`, `MULE`, etc.) pueden montarse aunque MythicMobs/LibsDisguises haya cancelado la interacción por un `Disguise`; una vez montados conservan el control vanilla real de Minecraft.
+- `control.movement-percentages` permite ajustar `forward`, `backward` y `lateral` por separado para `ground`, `flying`, `aquatic`, `lava` y `jumper`.
+- Los porcentajes quedan cacheados al recargar y las monturas manuales reutilizan `sin/cos` mientras el yaw no cambie.
+
 
 Controlador ligero de monturas para MDVCRAFT sobre Paper/Purpur 1.21.6+.
 
