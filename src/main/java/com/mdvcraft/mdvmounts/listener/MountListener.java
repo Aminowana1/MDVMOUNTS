@@ -78,9 +78,7 @@ public final class MountListener implements Listener {
         // SHIFT se usa para bajar en vuelo/agua/lava. Sólo interceptamos el
         // desmontaje si realmente el input actual es sneak. Otros desmontajes
         // programáticos o por muerte no quedan atrapados.
-        if (session.type().sneakControlsVerticalMovement()
-                && player.getCurrentInput().isSneak()
-                && event.isCancellable()) {
+        if (mountManager.isVerticalDismountInput(player) && event.isCancellable()) {
             boolean allowDismount = mountManager.registerVerticalDismountAttempt(player);
             if (!allowDismount) {
                 event.setCancelled(true);
