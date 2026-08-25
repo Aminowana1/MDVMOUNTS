@@ -1,6 +1,13 @@
-# MDVMounts 1.0.5
+# MDVMounts 1.0.6
 
 Controlador ligero de monturas para MDVCRAFT sobre Paper/Purpur 1.21.6+.
+
+## 1.0.6
+
+- Las monturas `mdv_mount_flying` mantienen la altura exacta al soltar todos los controles.
+- El hover no recalcula dirección ni atributos: sólo corrige `velocityY` si una entidad voladora intenta subir o bajar por sí sola.
+- Se mantiene el frenado único al soltar input, evitando `setVelocity(0,0,0)` redundante cada tick.
+- Eliminado el archivo residual `DisguiseSupport.java`; el proyecto no contiene lógica de detección de disguises.
 
 ## 1.0.5
 
@@ -79,7 +86,7 @@ mvn clean package
 Resultado:
 
 ```text
-target/MDVMounts-1.0.5.jar
+target/MDVMounts-1.0.6.jar
 ```
 
 El workflow incluido también verifica compilación contra Paper 1.21.6 y 1.21.11.

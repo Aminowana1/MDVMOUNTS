@@ -24,7 +24,7 @@ public final class MDVMountsPlugin extends JavaPlugin {
         }
 
         mountManager.start();
-        getLogger().info("MDVMounts 1.0.5 habilitado. Controles unificados, auto-step nativo y movimiento inmediato.");
+        getLogger().info("MDVMounts 1.0.6 habilitado. Controles unificados, hover estable y movimiento inmediato.");
     }
 
     @Override

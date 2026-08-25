@@ -311,11 +311,25 @@ public final class MountMovement {
     boolean hasInput = horizontal != null || input.isJump();
 
     // When the player releases everything, stop once and then stay idle.
-    // We do not keep sending a zero velocity every server tick.
+    // We do not keep sending a full zero velocity every server tick.
     if (!hasInput) {
       if (session.manualInputActive()) {
         mount.setVelocity(new Vector(0.0D, 0.0D, 0.0D));
         session.setManualInputActive(false);
+        return;
+      }
+
+      // Flying mounts must hover at the exact altitude where the rider
+      // released the controls. Some native flying entities (notably bees)
+      // can reintroduce a tiny vertical velocity even with gravity disabled.
+      // Only read the current velocity and correct Y when it actually moved:
+      // no direction math, attribute lookup, block scan or redundant write.
+      if (session.type() == MountType.FLYING) {
+        Vector velocity = mount.getVelocity();
+        if (Math.abs(velocity.getY()) > 0.0001D) {
+          velocity.setY(0.0D);
+          mount.setVelocity(velocity);
+        }
       }
       return;
     }
