@@ -160,11 +160,6 @@ public final class MountManager {
         return movement.registerDismountAttempt(session);
     }
 
-    public boolean isVerticalDismountInput(Player player) {
-        MountSession session = sessions.get(player.getUniqueId());
-        return session != null && movement.isVerticalDismountInput(session);
-    }
-
     public int activeCount() {
         return sessions.size();
     }
