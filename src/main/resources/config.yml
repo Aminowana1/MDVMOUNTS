@@ -37,19 +37,13 @@ control:
   vertical-speed:
     # Velocidad vertical base de las monturas.
     # Valores mayores hacen que subir y bajar sea más rápido.
-    base-multiplier: 6.5
+    base-multiplier: 1.5
 
     # Multiplica la velocidad base por JUMP_STRENGTH de la criatura.
     # Permite que cada montura tenga una velocidad vertical diferente
     # utilizando sus atributos de MythicMobs.
     multiply-by-jump-strength: true
 
-    # Velocidad de descenso cuando no se mantiene ninguna tecla vertical.
-    # Se expresa como una proporción de la velocidad vertical.
-    # 1.0 = velocidad completa
-    # 0.5 = mitad de velocidad
-    # 0.0 = no descender
-    default-descend-factor: 0.4
 
 messages:
   mounted: "&aMontura controlada."

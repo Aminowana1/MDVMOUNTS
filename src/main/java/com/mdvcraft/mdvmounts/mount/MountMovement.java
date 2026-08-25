@@ -241,11 +241,7 @@ public final class MountMovement {
 
     double verticalSpeedMultiplier = plugin.getConfig().getDouble(
         "vertical-speed.base-multiplier",
-        6.5D);
-
-    double autoDescendFactor = plugin.getConfig().getDouble(
-        "vertical-speed.auto-descend-factor",
-        0.4D);
+        1.5D);
 
     double baseVerticalSpeed = speed * verticalSpeedMultiplier;
 
@@ -253,20 +249,26 @@ public final class MountMovement {
       baseVerticalSpeed *= getNativeJumpStrength(mount);
     }
 
-    double targetY;
+    double targetY = 0.0D;
 
     if (input.isJump()) {
-      // SPACE: rise
+      // SPACE: maximum upward speed
       targetY = baseVerticalSpeed;
-    } else if (input.isSprint()) {
-      // CONTROL: descend quickly
-      targetY = -baseVerticalSpeed;
-    } else {
-      // Nothing: slowly descend
-      targetY = -baseVerticalSpeed * autoDescendFactor;
+    } else if (input.isForward() || input.isBackward()) {
+      float pitch = session.player().getPitch();
+
+      // -90 = up, 0 = horizontal, +90 = down
+      double verticalFactor = -Math.sin(Math.toRadians(pitch));
+
+      // S reverses the vertical direction.
+      if (input.isBackward()) {
+        verticalFactor *= -1.0D;
+      }
+
+      targetY = verticalFactor * baseVerticalSpeed;
     }
 
-    double newY = targetY * AIR_ACCELERATION;
+    double newY = targetY;
 
     mount.setVelocity(new Vector(newX, newY, newZ));
   }
