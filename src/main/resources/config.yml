@@ -1,19 +1,19 @@
 # ==========================================================
-# MDVMounts 1.1.0
+# MDVMounts 1.1.1
 # Controlador ligero de monturas para MDVCRAFT.
 # ==========================================================
 #
-# Todas las monturas se controlan por los tags de MDVMounts.
-# No hay detección de Disguise ni tratamiento especial por tipo de entidad.
+# Este archivo contiene SOLO movilidad y mensajes generales.
+# Los inventarios por invocador viven en storage.yml.
+#
+# Las configs se auto-actualizan: al iniciar o ejecutar /mdvmounts reload,
+# las claves nuevas se agregan sin reemplazar tus valores existentes.
 #
 # Rendimiento:
 # - Sin raytraces ni búsquedas de bloques por tick.
 # - MOVEMENT_SPEED y JUMP_STRENGTH se cachean.
 # - STEP_HEIGHT se aplica una vez al montar y Minecraft resuelve los escalones.
 # - Los cambios de input pueden aplicarse inmediatamente con PlayerInputEvent.
-#
-# MythicMobs sigue siendo la fuente de verdad para MovementSpeed,
-# JumpStrength, vida, skills, modelos, etc.
 
 tags:
   require-base-tag: true
@@ -72,77 +72,15 @@ control:
       normalize-diagonal: true
 
   vertical-speed:
-    # Velocidad vertical base de las monturas tridimensionales.
     base-multiplier: 1.5
-
-    # Multiplica la velocidad vertical por JUMP_STRENGTH del mob.
     multiply-by-jump-strength: true
 
 performance:
-  # Aplica los cambios W/A/S/D/JUMP desde PlayerInputEvent al recibirlos.
+  # Aplica W/A/S/D/JUMP al recibir PlayerInputEvent.
   immediate-input-response: true
 
   # Refresca MOVEMENT_SPEED y JUMP_STRENGTH cada 10 ticks (0.5 s).
-  # No se consultan cada tick.
   attribute-refresh-ticks: 10
-
-
-# ==========================================================
-# ALFORJAS / ALMACENAMIENTO EN EL INVOCADOR
-# ==========================================================
-#
-# Solo los perfiles definidos aquí tienen almacenamiento.
-# Cada ItemStack físico recibe un UUID propio al primer uso y guarda sus
-# objetos dentro del componente minecraft:container del MISMO item.
-# No usa SQLite ni archivos por montura.
-#
-# Resultado:
-# - Silbato A y Silbato B, aunque sean del mismo tipo, tienen inventarios
-#   independientes.
-# - Si otro jugador roba/recoge el Silbato A, se lleva también sus objetos.
-# - El inventario solo abre si la montura INVOCADA por ese ItemStack está
-#   cerca. Tener otro silbato igual no permite abrirlo.
-# - No hay scans periódicos: las búsquedas solo ocurren al usar el invocador.
-#
-storage:
-  enabled: true
-
-  # Distancia por defecto para abrir las alforjas. Cada perfil puede cambiarla.
-  default-interaction-distance: 3.0
-
-  # Tras un click que no abrió almacenamiento, MDVMounts deja que Crucible
-  # invoque normalmente y busca durante unos pocos ticks la nueva montura
-  # para enlazarla con ESE ItemStack físico.
-  bind-search-radius: 4.5
-  bind-attempt-delays: [1, 2, 4]
-
-  # Evita meter silbatos con almacenamiento dentro de otro silbato.
-  prevent-nested-invokers: true
-
-  profiles:
-    caravan:
-      enabled: true
-
-      # Slots REALES utilizables: 1 a 54.
-      # Si no es múltiplo de 9, los espacios sobrantes de la última fila
-      # aparecen bloqueados y no cuentan como almacenamiento.
-      slots: 27
-      title: '&6Alforjas del Caballo'
-      interaction-distance: 3.0
-
-      # Cómo reconocer este tipo de invocador la primera vez.
-      # Después queda estampado internamente y sigue siendo el mismo objeto
-      # aunque cambie de dueño.
-      invoker:
-        material: SADDLE
-        display-name: '&e&lSilbato de Caravana'
-
-      # El mob correspondiente debe tener TODOS estos scoreboard tags.
-      # Para CABALLO_CARAVANA agrega:
-      # - addtag{tag=mdv_storage_caravana} @self ~onSpawn
-      mount:
-        required-tags:
-          - mdv_storage_caravana
 
 messages:
   mounted: "&aMontura controlada."
@@ -150,4 +88,3 @@ messages:
   invalid: "&cEsta entidad no es una montura MDV válida."
   no-permission: "&cNo tienes permiso para usar monturas."
   reloaded: "&aMDVMounts recargado."
-  storage-overflow: "&eLa capacidad de esta montura fue reducida; los objetos sobrantes fueron devueltos."

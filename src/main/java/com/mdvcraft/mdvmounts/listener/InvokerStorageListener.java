@@ -1,5 +1,6 @@
 package com.mdvcraft.mdvmounts.listener;
 
+import com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent;
 import com.mdvcraft.mdvmounts.storage.InvokerStorageManager;
 import com.mdvcraft.mdvmounts.storage.OpenStorageSession;
 import org.bukkit.Material;
@@ -8,10 +9,12 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
-import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
@@ -30,49 +33,49 @@ public final class InvokerStorageListener implements Listener {
     }
 
     /**
-     * Runs before Crucible's normal item use. If the correct physical invoker
-     * is beside its bound summoned mount, the click becomes "open storage".
-     * Otherwise the event is left alone so the existing MythicMobs summon
-     * skill can run exactly as before.
+     * LEFT CLICK = open storage, only if the exact bound mount is currently
+     * summoned and close enough.
+     *
+     * RIGHT CLICK is never consumed by storage. It remains available for
+     * Crucible/MythicMobs invocation; MDVMounts only arms the tiny post-summon
+     * binding window.
      */
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onUse(PlayerInteractEvent event) {
         if (event.getHand() != EquipmentSlot.HAND) {
             return;
         }
-        if (event.getAction() != Action.RIGHT_CLICK_AIR
-                && event.getAction() != Action.RIGHT_CLICK_BLOCK) {
-            return;
-        }
 
-        Player player = event.getPlayer();
         ItemStack item = event.getItem();
         if (item == null || item.getType() == Material.AIR) {
             return;
         }
 
-        if (storageManager.tryOpen(player, item)) {
-            event.setCancelled(true);
-            event.setUseItemInHand(org.bukkit.event.Event.Result.DENY);
-            event.setUseInteractedBlock(org.bukkit.event.Event.Result.DENY);
+        Action action = event.getAction();
+        if (action == Action.LEFT_CLICK_AIR || action == Action.LEFT_CLICK_BLOCK) {
+            if (storageManager.tryOpen(event.getPlayer(), item)) {
+                event.setCancelled(true);
+                event.setUseItemInHand(org.bukkit.event.Event.Result.DENY);
+                event.setUseInteractedBlock(org.bukkit.event.Event.Result.DENY);
+            }
             return;
         }
 
-        // No matching bound mount nearby: do not interfere with Crucible.
-        // We only prepare a very short post-click binding window so that, if
-        // the existing summon skill creates the configured mob, that new mob
-        // becomes linked to this exact physical ItemStack.
-        storageManager.armBindingAfterInvocation(player, item);
+        if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
+            storageManager.armBindingAfterInvocation(event.getPlayer(), item);
+        }
     }
 
+    // RIGHT CLICK on an entity can also be the Crucible use that summons a
+    // mount, so arm binding there too. Storage itself never opens here.
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onUseOnEntity(PlayerInteractEntityEvent event) {
         if (event.getHand() != EquipmentSlot.HAND) {
             return;
         }
-        if (storageManager.tryOpen(event.getPlayer(), event.getPlayer().getInventory().getItemInMainHand())) {
-            event.setCancelled(true);
-        }
+        storageManager.armBindingAfterInvocation(
+                event.getPlayer(),
+                event.getPlayer().getInventory().getItemInMainHand());
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
@@ -80,7 +83,21 @@ public final class InvokerStorageListener implements Listener {
         if (event.getHand() != EquipmentSlot.HAND) {
             return;
         }
-        if (storageManager.tryOpen(event.getPlayer(), event.getPlayer().getInventory().getItemInMainHand())) {
+        storageManager.armBindingAfterInvocation(
+                event.getPlayer(),
+                event.getPlayer().getInventory().getItemInMainHand());
+    }
+
+    // A direct left click on an entity is represented as an attack event, not
+    // PlayerInteractEvent. If a valid bound mount is nearby, consume that hit
+    // and open the invoker storage instead.
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
+    public void onLeftClickEntity(EntityDamageByEntityEvent event) {
+        if (!(event.getDamager() instanceof Player player)) {
+            return;
+        }
+        ItemStack item = player.getInventory().getItemInMainHand();
+        if (storageManager.tryOpen(player, item)) {
             event.setCancelled(true);
         }
     }
@@ -101,17 +118,14 @@ public final class InvokerStorageListener implements Listener {
         ItemStack current = event.getCurrentItem();
         ItemStack cursor = event.getCursor();
 
-        // The physical invoker whose data backs this GUI must remain in the
-        // player's inventory until the GUI closes, otherwise there is nowhere
-        // safe to write the edited container component.
+        // The physical invoker whose data backs this GUI must remain with the
+        // viewer until close so changes can be written to that exact ItemStack.
         if (storageManager.isActiveInvoker(current, session)
                 || storageManager.isActiveInvoker(cursor, session)) {
             event.setCancelled(true);
             return;
         }
 
-        // Number-key swaps can pull the active invoker from the hotbar or put
-        // another storage invoker inside the container.
         if (event.getClick() == ClickType.SWAP_OFFHAND) {
             ItemStack offhand = player.getInventory().getItemInOffHand();
             if (storageManager.isActiveInvoker(offhand, session)
@@ -138,8 +152,6 @@ public final class InvokerStorageListener implements Listener {
             }
         }
 
-        // Exact capacities such as 10 or 20 slots use a chest GUI rounded up
-        // to the next row. The extra visual slots are not usable storage.
         if (rawSlot >= 0 && rawSlot < topSize
                 && !storageManager.isUsableTopSlot(session, rawSlot)) {
             event.setCancelled(true);
@@ -150,9 +162,6 @@ public final class InvokerStorageListener implements Listener {
             return;
         }
 
-        // Prevent configured invokers (including other whistles) from being
-        // nested inside mount storage. This avoids recursive container items
-        // and keeps the physical-item ownership model simple and safe.
         if (rawSlot >= 0 && rawSlot < topSize && storageManager.isStorageInvoker(cursor)) {
             event.setCancelled(true);
             return;
@@ -227,15 +236,29 @@ public final class InvokerStorageListener implements Listener {
         }
     }
 
-    // Save before Bukkit builds the death drops. The dropped invoker therefore
-    // carries its container component and whoever loots it inherits the items.
+    // Save before Bukkit builds death drops, so the physical invoker carries
+    // the latest container contents if another player later loots it.
     @EventHandler(priority = EventPriority.HIGHEST)
-    public void onDeath(PlayerDeathEvent event) {
+    public void onPlayerDeath(PlayerDeathEvent event) {
         storageManager.closeAndSave(event.getEntity());
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onQuit(PlayerQuitEvent event) {
         storageManager.closeAndSave(event.getPlayer());
+    }
+
+    // If the bound animal dies, its menu is closed immediately.
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onMountDeath(EntityDeathEvent event) {
+        storageManager.closeSessionsForMount(event.getEntity().getUniqueId());
+    }
+
+    // Covers MythicMobs remove/despawn, plugin removals and chunk/world
+    // removal. This makes the GUI lifecycle follow the summoned entity rather
+    // than relying on a polling task.
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onMountRemoved(EntityRemoveFromWorldEvent event) {
+        storageManager.closeSessionsForMount(event.getEntity().getUniqueId());
     }
 }

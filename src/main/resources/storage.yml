@@ -1,0 +1,54 @@
+# ==========================================================
+# MDVMounts 1.1.1 - ALMACENAMIENTO DE MONTURAS
+# ==========================================================
+#
+# CLICK IZQUIERDO con el invocador:
+#   abre el almacenamiento si SU montura está invocada y cerca.
+#
+# CLICK DERECHO:
+#   MDVMounts no abre el almacenamiento. Crucible/MythicMobs puede usarlo
+#   normalmente para invocar la montura y MDVMounts la enlaza después.
+#
+# Cada ItemStack físico tiene su UUID y su propio minecraft:container.
+# Si el silbato cambia de dueño, sus objetos viajan con él.
+# Solo una persona puede visualizar un mismo almacenamiento a la vez.
+# Si la montura muere, despawnea o es removida, el menú se cierra.
+#
+# Este archivo también se auto-actualiza: se agregan claves nuevas sin
+# reemplazar valores ni perfiles personalizados existentes.
+
+enabled: true
+
+# Distancia por defecto para abrir el almacenamiento.
+default-interaction-distance: 3.0
+
+# Tras un click derecho de invocación, busca por unos pocos ticks la nueva
+# montura compatible para enlazarla con ESE ItemStack físico.
+bind-search-radius: 4.5
+bind-attempt-delays: [1, 2, 4]
+
+# Evita guardar invocadores con almacenamiento dentro de otro invocador.
+prevent-nested-invokers: true
+
+profiles:
+  caravan:
+    enabled: true
+
+    # Slots REALES utilizables, de 1 a 54.
+    slots: 27
+    title: '&6Alforjas del Caballo'
+    interaction-distance: 3.0
+
+    invoker:
+      material: SADDLE
+      display-name: '&e&lSilbato de Caravana'
+
+    # El mob invocado debe tener TODOS estos scoreboard tags.
+    mount:
+      required-tags:
+        - mdv_storage_caravana
+
+messages:
+  storage-in-use: '&cEse almacenamiento ya está siendo utilizado por otra persona.'
+  storage-mount-gone: '&eEl almacenamiento se cerró porque tu montura desapareció.'
+  storage-overflow: '&eLa capacidad de esta montura fue reducida; los objetos sobrantes fueron devueltos.'

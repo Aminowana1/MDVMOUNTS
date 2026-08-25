@@ -8,6 +8,7 @@ import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
@@ -16,7 +17,6 @@ import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
-import org.bukkit.scheduler.BukkitTask;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -44,6 +44,9 @@ public final class InvokerStorageManager {
 
     private final Map<String, InvokerStorageProfile> profiles = new HashMap<>();
     private final Map<UUID, OpenStorageSession> openSessions = new HashMap<>();
+    // Hard lock by physical invoker UUID: one storage can have only one viewer,
+    // regardless of which player currently holds the ItemStack.
+    private final Map<UUID, UUID> storageViewers = new HashMap<>();
     private final Map<UUID, PendingBinding> pendingBindings = new HashMap<>();
 
     private boolean enabled;
@@ -62,18 +65,20 @@ public final class InvokerStorageManager {
     }
 
     public void reloadSettings() {
-        enabled = plugin.getConfig().getBoolean("storage.enabled", true);
+        FileConfiguration config = plugin.getStorageConfig();
+
+        enabled = config.getBoolean("enabled", true);
         defaultInteractionDistance = clamp(
-                plugin.getConfig().getDouble("storage.default-interaction-distance", 3.0D),
+                config.getDouble("default-interaction-distance", 3.0D),
                 0.5D,
                 12.0D);
         bindSearchRadius = clamp(
-                plugin.getConfig().getDouble("storage.bind-search-radius", 4.5D),
+                config.getDouble("bind-search-radius", 4.5D),
                 1.0D,
                 16.0D);
-        preventNestedInvokers = plugin.getConfig().getBoolean("storage.prevent-nested-invokers", true);
+        preventNestedInvokers = config.getBoolean("prevent-nested-invokers", true);
 
-        List<Integer> configuredDelays = plugin.getConfig().getIntegerList("storage.bind-attempt-delays");
+        List<Integer> configuredDelays = config.getIntegerList("bind-attempt-delays");
         if (configuredDelays.isEmpty()) {
             bindAttemptDelays = List.of(1L, 2L, 4L);
         } else {
@@ -87,7 +92,7 @@ public final class InvokerStorageManager {
         }
 
         profiles.clear();
-        ConfigurationSection section = plugin.getConfig().getConfigurationSection("storage.profiles");
+        ConfigurationSection section = config.getConfigurationSection("profiles");
         if (section == null) {
             return;
         }
@@ -109,14 +114,14 @@ public final class InvokerStorageManager {
             String materialName = profileSection.getString("invoker.material", "SADDLE");
             Material material = Material.matchMaterial(materialName == null ? "SADDLE" : materialName);
             if (material == null) {
-                plugin.getLogger().warning("storage.profiles." + key + ": material inválido; perfil omitido.");
+                plugin.getLogger().warning("storage.yml profiles." + key + ": material inválido; perfil omitido.");
                 continue;
             }
 
             String displayName = profileSection.getString("invoker.display-name", "");
             List<String> requiredTags = profileSection.getStringList("mount.required-tags");
             if (requiredTags.isEmpty()) {
-                plugin.getLogger().warning("storage.profiles." + key
+                plugin.getLogger().warning("storage.yml profiles." + key
                         + ": mount.required-tags está vacío; perfil omitido para evitar enlazar la montura incorrecta.");
                 continue;
             }
@@ -141,6 +146,7 @@ public final class InvokerStorageManager {
             }
         }
         openSessions.clear();
+        storageViewers.clear();
         pendingBindings.clear();
     }
 
@@ -175,7 +181,19 @@ public final class InvokerStorageManager {
             return false;
         }
 
-        open(player, item, profile, storageId);
+        UUID viewerId = storageViewers.get(storageId);
+        if (viewerId != null && !viewerId.equals(player.getUniqueId())) {
+            OpenStorageSession lockedSession = openSessions.get(viewerId);
+            if (lockedSession != null && lockedSession.storageId().equals(storageId)) {
+                message(player, "messages.storage-in-use",
+                        "&cEse almacenamiento ya está siendo utilizado por otra persona.");
+                return true;
+            }
+            // Defensive stale-lock cleanup.
+            storageViewers.remove(storageId, viewerId);
+        }
+
+        open(player, item, profile, storageId, mount.getUniqueId());
         return true;
     }
 
@@ -252,13 +270,47 @@ public final class InvokerStorageManager {
         }
 
         if (removeSession) {
-            openSessions.remove(player.getUniqueId());
+            openSessions.remove(player.getUniqueId(), session);
+            storageViewers.remove(session.storageId(), player.getUniqueId());
         }
     }
 
     public void closeAndSave(Player player) {
         if (openSessions.containsKey(player.getUniqueId())) {
             saveOpenSession(player, true);
+        }
+    }
+
+    /**
+     * Closes every GUI backed by the given summoned mount. There is normally
+     * at most one because storage itself is single-viewer locked. This method
+     * is event-driven (death/remove) and adds no polling task.
+     */
+    public void closeSessionsForMount(UUID mountId) {
+        if (mountId == null || openSessions.isEmpty()) {
+            return;
+        }
+
+        List<OpenStorageSession> affected = new ArrayList<>();
+        for (OpenStorageSession session : openSessions.values()) {
+            if (mountId.equals(session.mountId())) {
+                affected.add(session);
+            }
+        }
+
+        for (OpenStorageSession session : affected) {
+            Player viewer = Bukkit.getPlayer(session.playerId());
+            if (viewer != null) {
+                saveOpenSession(viewer, true);
+                if (viewer.getOpenInventory().getTopInventory() == session.inventory()) {
+                    viewer.closeInventory();
+                }
+                message(viewer, "messages.storage-mount-gone",
+                        "&eEl almacenamiento se cerró porque tu montura desapareció.");
+            } else {
+                openSessions.remove(session.playerId(), session);
+                storageViewers.remove(session.storageId(), session.playerId());
+            }
         }
     }
 
@@ -269,7 +321,8 @@ public final class InvokerStorageManager {
     private void open(Player player,
                       ItemStack item,
                       InvokerStorageProfile profile,
-                      UUID storageId) {
+                      UUID storageId,
+                      UUID mountId) {
         OpenStorageSession alreadyOpen = openSessions.get(player.getUniqueId());
         if (alreadyOpen != null && alreadyOpen.storageId().equals(storageId)) {
             return;
@@ -323,8 +376,9 @@ public final class InvokerStorageManager {
             }
         }
 
+        storageViewers.put(storageId, player.getUniqueId());
         openSessions.put(player.getUniqueId(), new OpenStorageSession(
-                player.getUniqueId(), storageId, profile, inventory));
+                player.getUniqueId(), storageId, mountId, profile, inventory));
         player.openInventory(inventory);
     }
 
@@ -532,6 +586,28 @@ public final class InvokerStorageManager {
     }
 
     private LocatedItem findItemByStorageId(Player player, UUID storageId) {
+        LocatedItem preferred = findItemByStorageIdInPlayer(player, storageId);
+        if (preferred != null) {
+            return preferred;
+        }
+
+        // Normally impossible because the active invoker cannot be moved while
+        // its GUI is open. Still, if another plugin transfers it, find the
+        // current online holder so edits are written to the physical item that
+        // actually changed hands. This scan only happens on save/close.
+        for (Player online : Bukkit.getOnlinePlayers()) {
+            if (online.getUniqueId().equals(player.getUniqueId())) {
+                continue;
+            }
+            LocatedItem transferred = findItemByStorageIdInPlayer(online, storageId);
+            if (transferred != null) {
+                return transferred;
+            }
+        }
+        return null;
+    }
+
+    private LocatedItem findItemByStorageIdInPlayer(Player player, UUID storageId) {
         PlayerInventory inventory = player.getInventory();
         for (int slot = 0; slot < inventory.getSize(); slot++) {
             ItemStack item = inventory.getItem(slot);
@@ -572,7 +648,7 @@ public final class InvokerStorageManager {
     }
 
     private void message(Player player, String path, String fallback) {
-        String raw = plugin.getConfig().getString(path, fallback);
+        String raw = plugin.getStorageConfig().getString(path, fallback);
         if (raw == null || raw.isBlank()) {
             return;
         }

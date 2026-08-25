@@ -24,7 +24,7 @@ public final class MDVMountsCommand implements CommandExecutor, TabCompleter {
                              String label,
                              String[] args) {
         if (args.length == 0) {
-            sender.sendMessage(ChatColor.YELLOW + "/mdvmounts reload" + ChatColor.GRAY + " - recarga config");
+            sender.sendMessage(ChatColor.YELLOW + "/mdvmounts reload" + ChatColor.GRAY + " - recarga config + storage");
             sender.sendMessage(ChatColor.YELLOW + "/mdvmounts status" + ChatColor.GRAY + " - sesiones activas");
             return true;
         }

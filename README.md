@@ -1,147 +1,83 @@
-# MDVMounts 1.1.0
+# MDVMounts 1.1.1
 
 Controlador ligero de monturas para MDVCRAFT sobre Paper/Purpur 1.21.6+.
 
-## 1.1.0 - Alforjas ligadas al invocador
+## 1.1.1 - Almacenamiento por invocador endurecido
 
-Se mantiene intacta la movilidad de 1.0.6 y se agrega almacenamiento opcional para invocadores concretos.
+La movilidad de 1.0.6 no se modifica. Esta versión ajusta únicamente las alforjas/almacenamiento.
+
+### Controles del invocador
+
+- **Click izquierdo** con un invocador configurado: abre su almacenamiento si la montura exacta ligada a ese ItemStack está invocada y dentro de `interaction-distance`.
+- **Click derecho**: MDVMounts no abre almacenamiento. Crucible/MythicMobs conserva la invocación normal y MDVMounts enlaza después el mob recién creado con ese ItemStack físico.
 
 ### Modelo de almacenamiento
 
-- Cada ItemStack físico configurado como invocador recibe un UUID propio al primer uso.
-- Los objetos se guardan dentro de ese mismo ItemStack usando `DataComponentTypes.CONTAINER` (`minecraft:container`).
-- No usa SQLite ni un archivo por montura.
-- Dos Silbatos de Caravana idénticos visualmente tienen inventarios independientes.
-- Si un jugador muere y otro recoge el silbato, el segundo se lleva también el contenido almacenado.
-- El almacenamiento sólo se puede abrir si está cerca la montura que fue enlazada a ESE ItemStack físico.
-- Sólo tienen almacenamiento los perfiles definidos en `storage.profiles`.
+- Cada ItemStack físico recibe un UUID propio cuando consigue invocar una montura compatible.
+- Los objetos se guardan dentro del mismo ItemStack con `DataComponentTypes.CONTAINER` (`minecraft:container`).
+- No usa SQLite.
+- Dos silbatos visualmente idénticos tienen inventarios distintos.
+- Si otro jugador roba o recoge el mismo silbato, hereda también su contenido.
+- Sólo se abre si está cerca la montura enlazada a ESE silbato concreto.
+- Un mismo almacenamiento tiene **single-viewer lock**: sólo una persona puede verlo a la vez, incluso si el item cambia de manos por una mecánica externa.
+- Si la montura ligada muere, despawnea, es removida por MythicMobs o sale del mundo, el menú abierto se guarda y se cierra inmediatamente.
 
-### Ejemplo: Silbato de Caravana
+### Configuración separada
 
-En `config.yml` viene este perfil de ejemplo:
+La movilidad permanece en `config.yml`.
 
-```yaml
-storage:
-  profiles:
-    caravan:
-      enabled: true
-      slots: 27
-      title: '&6Alforjas del Caballo'
-      interaction-distance: 3.0
+Los inventarios viven en:
 
-      invoker:
-        material: SADDLE
-        display-name: '&e&lSilbato de Caravana'
-
-      mount:
-        required-tags:
-          - mdv_storage_caravana
+```text
+plugins/MDVMounts/storage.yml
 ```
 
-Al `CABALLO_CARAVANA` hay que añadirle el tag específico del perfil:
+Ejemplo:
+
+```yaml
+profiles:
+  caravan:
+    enabled: true
+    slots: 27
+    title: '&6Alforjas del Caballo'
+    interaction-distance: 3.0
+
+    invoker:
+      material: SADDLE
+      display-name: '&e&lSilbato de Caravana'
+
+    mount:
+      required-tags:
+        - mdv_storage_caravana
+```
+
+Y el mob:
 
 ```yaml
 Skills:
 - addtag{tag=mdv_storage_caravana} @self ~onSpawn
 ```
 
-El invocador de Crucible puede seguir exactamente con la misma skill que ya usaba:
+`slots` admite de 1 a 54 espacios reales.
 
-```yaml
-INVOCADOR_CABALLO_CARAVANA:
-  Id: SADDLE
-  Display: '&e&lSilbato de Caravana'
-  Skills:
-  - skill{
-      s=MDV_MOUNT_INVOCAR;
-      mob=CABALLO_CARAVANA;
-      nombre="&6Caballo de Caravana"
-    } @self ~onUse
-```
+### Autoactualización y migración
 
-Flujo:
+`config.yml` y `storage.yml` se autoactualizan al iniciar y con `/mdvmounts reload`: las claves nuevas del JAR se agregan sin reemplazar valores existentes.
 
-```text
-Silbato A invoca -> CABALLO_CARAVANA queda enlazado al UUID de Silbato A
-Silbato A + caballo a <=3 bloques -> click derecho abre inventario A
-Silbato B + caballo de A cerca -> NO abre inventario A
-Sin montura correspondiente cerca -> MDVMounts no cancela el uso y Crucible invoca normalmente
-```
+Si se actualiza desde 1.1.0 y `config.yml` todavía contiene la sección `storage:`, MDVMounts la migra automáticamente a `storage.yml` y elimina la sección antigua del archivo principal. También migra mensajes `storage-*` antiguos.
 
-`slots` admite de 1 a 54 espacios reales. Si se configura, por ejemplo, `slots: 20`, la GUI usa 27 espacios visuales pero los 7 sobrantes quedan bloqueados.
+## Movilidad cerrada (1.0.6)
 
-Para evitar contenedores recursivos, por defecto un invocador con almacenamiento no se puede guardar dentro de otro:
+- Tags: `mdv_mount` + uno de `mdv_mount_ground`, `mdv_mount_flying`, `mdv_mount_aquatic`, `mdv_mount_lava`, `mdv_mount_jumper`.
+- Respuesta inmediata con `PlayerInputEvent`.
+- `MOVEMENT_SPEED` y `JUMP_STRENGTH` cacheados.
+- Ground usa `STEP_HEIGHT` nativo para subir desniveles sin raytraces.
+- Flying mantiene altura al quedar sin input.
+- Sin scans globales de entidades para movilidad.
 
-```yaml
-storage:
-  prevent-nested-invokers: true
-```
+## Rendimiento del almacenamiento
 
-### Rendimiento del almacenamiento
-
-No añade timers ni scans globales. La búsqueda de la montura sólo ocurre al usar un invocador configurado y durante unos pocos ticks después del click para enlazar el mob recién invocado. El contenido sólo se serializa al cerrar la GUI, morir, salir o apagar el plugin.
-
-## 1.0.6 - Movilidad cerrada
-
-- Las monturas `mdv_mount_flying` mantienen la altura exacta al soltar todos los controles.
-- El hover no recalcula dirección ni atributos: sólo corrige `velocityY` si una entidad voladora intenta subir o bajar por sí sola.
-- Se mantiene el frenado único al soltar input, evitando `setVelocity(0,0,0)` redundante cada tick.
-- No hay lógica de detección de disguises.
-
-## Filosofía
-
-- MythicMobs crea y configura el mob.
-- MMOItems/Crucible crea el invocador.
-- MythicMobs define vida, `MovementSpeed`, `JumpStrength`, skills, modelos y demás stats.
-- MDVMounts controla movilidad y, opcionalmente, el almacenamiento ligado al ItemStack.
-- No usa NMS ni ProtocolLib.
-- No depende de LibsDisguises.
-
-## Tags de movilidad
-
-Todo mob controlable debe tener:
-
-```text
-mdv_mount
-```
-
-y un controlador principal:
-
-```text
-mdv_mount_ground
-mdv_mount_flying
-mdv_mount_aquatic
-mdv_mount_lava
-mdv_mount_jumper
-```
-
-Prioridad si hay varios: `FLYING > AQUATIC > LAVA > JUMPER > GROUND`.
-
-## Controles
-
-### Ground
-
-- W/A/S/D: movimiento inmediato según `movement-percentages.ground`.
-- SPACE: salto usando `JUMP_STRENGTH`.
-- SHIFT: desmontaje normal de Minecraft.
-- `STEP_HEIGHT`: permite subir desniveles configurados sin escaneos custom.
-
-### Flying / Aquatic / Lava
-
-Conservan el comportamiento de 1.0.6. Sus porcentajes horizontales se configuran independientemente en `config.yml`.
-
-### Jumper
-
-Usa el perfil terrestre y salta automáticamente mientras haya input horizontal.
-
-## Rendimiento
-
-- Un único loop sobre sesiones activas; no hay scans globales de entidades.
-- `MOVEMENT_SPEED` y `JUMP_STRENGTH` se refrescan cada `performance.attribute-refresh-ticks`.
-- `STEP_HEIGHT` se aplica al montar y se restaura al desmontar.
-- El yaw cachea seno/coseno mientras no cambie.
-- `PlayerInputEvent` sólo aplica respuesta extra cuando cambia el estado de teclas.
-- Las alforjas no añaden ningún loop periódico.
+No añade timers ni scans globales. Las búsquedas de montura ocurren sólo al usar un invocador configurado y durante los pocos ticks de enlace posteriores a la invocación. El cierre por muerte/despawn es por eventos, no por polling.
 
 ## Compilar
 
@@ -154,7 +90,5 @@ mvn clean package
 Resultado:
 
 ```text
-target/MDVMounts-1.1.0.jar
+target/MDVMounts-1.1.1.jar
 ```
-
-El workflow incluido verifica compilación contra Paper 1.21.6 y 1.21.11.

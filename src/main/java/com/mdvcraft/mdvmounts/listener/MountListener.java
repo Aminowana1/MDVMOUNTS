@@ -3,7 +3,6 @@ package com.mdvcraft.mdvmounts.listener;
 import com.mdvcraft.mdvmounts.MDVMountsPlugin;
 import com.mdvcraft.mdvmounts.mount.MountManager;
 import com.mdvcraft.mdvmounts.mount.MountSession;
-import com.mdvcraft.mdvmounts.storage.InvokerStorageManager;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
@@ -22,14 +21,11 @@ import org.bukkit.inventory.EquipmentSlot;
 public final class MountListener implements Listener {
     private final MDVMountsPlugin plugin;
     private final MountManager mountManager;
-    private final InvokerStorageManager storageManager;
 
     public MountListener(MDVMountsPlugin plugin,
-                         MountManager mountManager,
-                         InvokerStorageManager storageManager) {
+                         MountManager mountManager) {
         this.plugin = plugin;
         this.mountManager = mountManager;
-        this.storageManager = storageManager;
     }
 
     // Las monturas MDV se identifican por tags, así que procesamos también
@@ -53,14 +49,6 @@ public final class MountListener implements Listener {
 
         Player player = event.getPlayer();
         Entity clicked = event.getRightClicked();
-
-        // If the player is holding a storage-enabled invoker and this exact
-        // physical item has its bound summoned mount nearby, the invoker
-        // interaction takes precedence over mounting the entity.
-        if (storageManager.tryOpen(player, player.getInventory().getItemInMainHand())) {
-            event.setCancelled(true);
-            return;
-        }
 
         if (!mountManager.isMountCandidate(clicked)) {
             return;
