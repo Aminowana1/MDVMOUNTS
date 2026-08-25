@@ -27,18 +27,15 @@ public final class MountListener implements Listener {
         this.mountManager = mountManager;
     }
 
-    // MythicMobs/LibsDisguises or the underlying vanilla horse interaction can
-    // arrive already cancelled. MDV tagged mounts are ours to handle, so we
-    // intentionally still inspect cancelled interactions. This is especially
-    // important for HORSE mobs using a visual Disguise (COW, SILVERFISH, etc.).
+    // Las monturas MDV se identifican por tags, así que procesamos también
+    // interacciones que otro plugin haya marcado como canceladas.
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onInteract(PlayerInteractEntityEvent event) {
         handleInteract(event);
     }
 
-    // A disguise can make the client send the more precise INTERACT_AT packet.
-    // Paper exposes it as a different event with its own handler list, so we
-    // listen to it explicitly as well.
+    // También atendemos INTERACT_AT para cubrir la variante precisa del click
+    // sobre entidades sin duplicar sesiones.
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onInteractAt(PlayerInteractAtEntityEvent event) {
         handleInteract(event);

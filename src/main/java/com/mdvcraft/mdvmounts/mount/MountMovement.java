@@ -22,15 +22,13 @@ public final class MountMovement {
 
   private boolean pauseVanillaAi;
   private boolean rotateWithRider;
-  private int verticalDismountTaps;
-  private long verticalDismountWindowMs;
 
   // Cached config. These used to be read from YAML every movement tick.
   private boolean multiplyVerticalByJumpStrength;
   private double verticalSpeedMultiplier;
   private int attributeRefreshTicks;
 
-  // Horse-like ground feel for every manual GROUND mount. STEP_HEIGHT is
+  // Horse-like ground feel for every GROUND mount. STEP_HEIGHT is
   // applied once when the rider mounts, so one-block ledges are handled by
   // Minecraft's own collision engine with zero block scans/raytraces per tick.
   private boolean groundHorseFeelEnabled;
@@ -91,26 +89,11 @@ public final class MountMovement {
 
     loadMovementProfiles();
 
-    verticalDismountTaps = Math.max(1, plugin.getConfig().getInt(
-        "control.vertical-dismount.taps",
-        3));
-
-    verticalDismountWindowMs = Math.max(1L, plugin.getConfig().getLong(
-        "control.vertical-dismount.window-ms",
-        900L));
-
     if (previouslyPausedAi != pauseVanillaAi) {
       for (MountSession session : activeSessions) {
         if (!(session.mount() instanceof Mob mob)
             || session.originalAware() == null
             || !session.mount().isValid()) {
-          continue;
-        }
-
-        // Ground horses are delegated to Minecraft's native mounted control.
-        // Their vanilla AI state must remain untouched while ridden.
-        if (session.nativeGroundSteering()) {
-          mob.setAware(session.originalAware());
           continue;
         }
 
@@ -125,7 +108,7 @@ public final class MountMovement {
 
     // Re-apply the one-time ground STEP_HEIGHT setting after /mdvmounts reload.
     for (MountSession session : activeSessions) {
-      if (!session.mount().isValid() || session.nativeGroundSteering()) {
+      if (!session.mount().isValid()) {
         continue;
       }
       if (session.type() == MountType.GROUND) {
@@ -141,23 +124,15 @@ public final class MountMovement {
   public void prepare(MountSession session) {
     LivingEntity mount = session.mount();
 
-    // Non-disguised ground horses use native Minecraft steering: zero custom
-    // velocity work, exact vanilla WASD feel. Disguised horses intentionally
-    // fall through to the manual GROUND controller because the client loses
-    // vanilla horse steering when LibsDisguises shows another entity type.
-    if (!session.nativeGroundSteering()
-        && pauseVanillaAi
-        && mount instanceof Mob mob) {
+    if (pauseVanillaAi && mount instanceof Mob mob) {
       mob.getPathfinder().stopPathfinding();
       mob.setAware(false);
     }
 
-    if (!session.nativeGroundSteering()) {
-      if (session.type() == MountType.GROUND && groundHorseFeelEnabled) {
-        applyGroundHorseFeel(session);
-      }
-      refreshNativeAttributes(session);
+    if (session.type() == MountType.GROUND && groundHorseFeelEnabled) {
+      applyGroundHorseFeel(session);
     }
+    refreshNativeAttributes(session);
 
     if (session.type() == MountType.FLYING) {
       enterFreeMovement(session);
@@ -181,26 +156,7 @@ public final class MountMovement {
     }
   }
 
-  public boolean registerDismountAttempt(MountSession session) {
-    if (!session.type().sneakControlsVerticalMovement()) {
-      return true;
-    }
-
-    return session.registerDismountTap(
-        System.currentTimeMillis(),
-        verticalDismountTaps,
-        verticalDismountWindowMs);
-  }
-
   public void tick(MountSession session) {
-    // Exact vanilla control for non-disguised HORSE/DONKEY/etc. GROUND mounts.
-    // Minecraft itself consumes the rider input, so MDVMounts has nothing to
-    // calculate here. Disguised horses have nativeGroundSteering=false and
-    // therefore use the immediate manual GROUND path below.
-    if (session.nativeGroundSteering()) {
-      return;
-    }
-
     Player player = session.player();
     LivingEntity mount = session.mount();
 
@@ -222,7 +178,6 @@ public final class MountMovement {
    */
   public void inputChanged(MountSession session, Input input) {
     if (!immediateInputResponse
-        || session.nativeGroundSteering()
         || !session.acceptImmediateInput(input)) {
       return;
     }
@@ -376,8 +331,7 @@ public final class MountMovement {
 
   /**
    * Returns the requested horizontal velocity using the cached profile for the
-   * session type. Native, non-disguised GROUND horses never reach this method: Minecraft
-   * handles their movement itself. Disguised horses do reach it intentionally.
+   * session type. All MDV mount types use the same immediate manual input path.
    */
   private Vector horizontalVelocity(MountSession session, Input input, double speed) {
     if (speed <= 0.0D) {
@@ -475,7 +429,7 @@ public final class MountMovement {
   }
 
   private void applyGroundHorseFeel(MountSession session) {
-    if (session.type() != MountType.GROUND || session.nativeGroundSteering()) {
+    if (session.type() != MountType.GROUND) {
       return;
     }
 

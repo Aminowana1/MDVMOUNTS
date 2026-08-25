@@ -24,7 +24,7 @@ public final class MDVMountsPlugin extends JavaPlugin {
         }
 
         mountManager.start();
-        getLogger().info("MDVMounts 1.0.4 habilitado. Control terrestre estilo caballo, auto-step nativo y movimiento inmediato.");
+        getLogger().info("MDVMounts 1.0.5 habilitado. Controles unificados, auto-step nativo y movimiento inmediato.");
     }
 
     @Override

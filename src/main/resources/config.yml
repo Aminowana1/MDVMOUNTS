@@ -1,20 +1,16 @@
 # ==========================================================
-# MDVMounts 1.0.4
+# MDVMounts 1.0.5
 # Controlador ligero de monturas para MDVCRAFT.
 # ==========================================================
 #
-# IMPORTANTE:
-# - Los caballos reales (HORSE/DONKEY/MULE/etc.) marcados como GROUND y SIN
-#   Disguise usan el control NATIVO de Minecraft: MDVMounts no calcula su
-#   velocidad por tick.
-# - Si ese caballo tiene un Disguise de MythicMobs/LibsDisguises (por ejemplo
-#   HORSE disfrazado de COW), el cliente pierde el steering vanilla del caballo.
-#   MDVMounts lo detecta una sola vez al montar y usa automáticamente el
-#   controlador GROUND manual con respuesta inmediata, conservando el Disguise.
-# - Las monturas no nativas (voladoras, acuáticas, lava, jumper y terrestres
-#   que no sean caballos) siguen usando control manual de Paper.
-# - Para las monturas manuales, MOVEMENT_SPEED y JUMP_STRENGTH se cachean y
-#   se refrescan cada pocos ticks en lugar de consultarse cada tick.
+# Todas las monturas se controlan por los tags de MDVMounts.
+# No hay detección de Disguise ni tratamiento especial por tipo de entidad.
+#
+# Rendimiento:
+# - Sin raytraces ni búsquedas de bloques por tick.
+# - MOVEMENT_SPEED y JUMP_STRENGTH se cachean.
+# - STEP_HEIGHT se aplica una vez al montar y Minecraft resuelve los escalones.
+# - Los cambios de input pueden aplicarse inmediatamente con PlayerInputEvent.
 #
 # MythicMobs sigue siendo la fuente de verdad para MovementSpeed,
 # JumpStrength, vida, skills, modelos, etc.
@@ -30,34 +26,20 @@ tags:
   jumper: mdv_mount_jumper
 
 control:
-  # Pausa la IA/pathfinding vanilla mientras el jugador conduce una montura
-  # MANUAL. Los caballos GROUND nativos no se tocan para conservar su control
-  # vanilla exacto.
+  # Pausa la IA/pathfinding vanilla mientras el jugador conduce una montura.
   pause-vanilla-ai-while-ridden: true
 
-  # Solo se aplica a monturas manuales. Los caballos vanilla ya rotan solos.
+  # La entidad gira con la cámara del jinete.
   rotate-mount-with-rider: true
 
-
-  # Sensación tipo caballo para TODAS las monturas manuales con tag GROUND.
-  # No hace raytraces ni busca bloques: usa el atributo STEP_HEIGHT nativo de
-  # Minecraft, aplicado una sola vez al montar y restaurado al desmontar.
-  # Esto permite subir desniveles de 1 bloque de forma natural y económica.
-  # Los caballos reales sin Disguise ya usan el comportamiento vanilla real.
+  # Sensación tipo caballo para TODAS las monturas GROUND.
+  # Usa STEP_HEIGHT nativo: no busca bloques ni hace raytraces.
   ground-horse-feel:
     enabled: true
     step-height: 1.0
 
   # Porcentajes de movimiento horizontal por controlador.
-  # 100 = velocidad MovementSpeed completa del MythicMob.
-  # 50  = mitad. 25 = un cuarto. También podés usar >100 si querés.
-  #
-  # IMPORTANTE:
-  # - HORSE/DONKEY/MULE/etc. GROUND SIN Disguise: control vanilla real; estos
-  #   porcentajes no se aplican.
-  # - HORSE/DONKEY/MULE/etc. GROUND CON Disguise: fallback manual automático;
-  #   usa estos porcentajes de `ground` para conservar W/A/S/D aun disfrazado.
-  # - Vacas, cerdos, etc. GROUND también usan estos porcentajes.
+  # 100 = MovementSpeed completo; 50 = mitad; 25 = un cuarto.
   movement-percentages:
     ground:
       forward: 100.0
@@ -96,27 +78,13 @@ control:
     # Multiplica la velocidad vertical por JUMP_STRENGTH del mob.
     multiply-by-jump-strength: true
 
-  # Preparado para monturas donde SHIFT también se use como control vertical.
-  vertical-dismount:
-    taps: 3
-    window-ms: 900
-
 performance:
-  # Los cambios de W/A/S/D/JUMP se aplican también desde PlayerInputEvent,
-  # solo cuando el estado de teclas cambia. Esto evita hasta 1 tick (50 ms)
-  # de espera perceptible sin crear un segundo loop por tick.
+  # Aplica los cambios W/A/S/D/JUMP desde PlayerInputEvent al recibirlos.
   immediate-input-response: true
 
-  # Refresca MOVEMENT_SPEED y JUMP_STRENGTH cada 10 ticks (0.5 s) en las
-  # monturas manuales. No se consultan cada tick.
-  # 20 = aún más económico, pero los cambios de stats tardan hasta 1 s.
+  # Refresca MOVEMENT_SPEED y JUMP_STRENGTH cada 10 ticks (0.5 s).
+  # No se consultan cada tick.
   attribute-refresh-ticks: 10
-
-  # Los caballos GROUND nativos SIN Disguise no necesitan controlador por tick.
-  # Sus sesiones solo hacen un chequeo de seguridad cada 20 ticks (1 s).
-  # Los caballos disfrazados usan el controlador manual, porque el cliente
-  # pierde el steering vanilla cuando ve otro tipo de entidad.
-  native-session-safety-check-ticks: 20
 
 messages:
   mounted: "&aMontura controlada."

@@ -3,7 +3,6 @@ package com.mdvcraft.mdvmounts.mount;
 import org.bukkit.Input;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
-import org.bukkit.entity.AbstractHorse;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
@@ -14,11 +13,8 @@ public final class MountSession {
     private final MountType type;
     private final boolean originalGravity;
     private final Boolean originalAware;
-    private final boolean nativeGroundSteering;
     private final Double originalStepHeightBase;
 
-    private long lastDismountTapAt;
-    private int dismountTapCount;
 
     // Cached native attributes. They are refreshed periodically instead of
     // being queried every server tick.
@@ -44,16 +40,6 @@ public final class MountSession {
 
         AttributeInstance stepHeight = mount.getAttribute(Attribute.STEP_HEIGHT);
         this.originalStepHeightBase = stepHeight == null ? null : stepHeight.getBaseValue();
-
-        // A visible real horse already has Minecraft's native mounted controls.
-        // However, LibsDisguises/MythicMobs disguises remove that horse steering
-        // client-side when the horse is shown as another entity (for example COW).
-        // In that case we deliberately fall back to MDVMounts' immediate manual
-        // controller so W/A/S/D still works while preserving the disguise.
-        // The disguise check happens ONCE when the session is created, never per tick.
-        this.nativeGroundSteering = type == MountType.GROUND
-                && mount instanceof AbstractHorse
-                && !DisguiseSupport.isDisguised(mount);
     }
 
     public Player player() {
@@ -76,27 +62,8 @@ public final class MountSession {
         return originalAware;
     }
 
-    public boolean nativeGroundSteering() {
-        return nativeGroundSteering;
-    }
-
     public Double originalStepHeightBase() {
         return originalStepHeightBase;
-    }
-
-    public boolean registerDismountTap(long now, int requiredTaps, long windowMillis) {
-        if (now - lastDismountTapAt > windowMillis) {
-            dismountTapCount = 0;
-        }
-
-        lastDismountTapAt = now;
-        dismountTapCount++;
-
-        if (dismountTapCount >= requiredTaps) {
-            dismountTapCount = 0;
-            return true;
-        }
-        return false;
     }
 
     public double cachedMovementSpeed() {
