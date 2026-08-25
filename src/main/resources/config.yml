@@ -1,0 +1,47 @@
+# ==========================================================
+# MDVMounts 1.0.0
+# Controlador ligero de monturas para MDVCRAFT.
+# ==========================================================
+#
+# IMPORTANTE:
+# MDVMounts NO tiene una estadística de velocidad propia.
+# Cada tick lee Attribute.MOVEMENT_SPEED de la entidad.
+# Por lo tanto, MovementSpeed de MythicMobs sigue siendo la
+# fuente de verdad y los cambios de atributo se reflejan en vivo.
+#
+# MDVMounts tampoco borra ni reemplaza skills de MythicMobs.
+# Mientras una montura tiene jinete, únicamente puede pausar la
+# awareness/pathfinding vanilla para que la IA no pelee contra WASD.
+# Al desmontar, restaura el estado anterior.
+
+tags:
+  # Recomendado: exigir este tag además del tag de comportamiento.
+  require-base-tag: true
+  base: mdv_mount
+
+  # Un mob debe tener uno de estos tags.
+  ground: mdv_mount_ground
+  flying: mdv_mount_flying
+  aquatic: mdv_mount_aquatic
+  lava: mdv_mount_lava
+  jumper: mdv_mount_jumper
+
+control:
+  # Pausa la IA/pathfinding vanilla mientras el jugador conduce.
+  # No elimina skills de MythicMobs.
+  pause-vanilla-ai-while-ridden: true
+
+  # Hace que la criatura mire hacia la dirección horizontal del jinete.
+  rotate-mount-with-rider: true
+
+  # En monturas voladoras/acuáticas/lava, SHIFT sirve para descender.
+  # Para desmontar se pulsa SHIFT esta cantidad de veces dentro de la ventana.
+  vertical-mount-dismount-taps: 3
+  vertical-mount-dismount-window-ms: 900
+
+messages:
+  mounted: "&aMontura controlada."
+  occupied: "&cEsta montura ya tiene un jinete."
+  invalid: "&cEsta entidad no es una montura MDV válida."
+  no-permission: "&cNo tienes permiso para usar monturas."
+  reloaded: "&aMDVMounts recargado."
