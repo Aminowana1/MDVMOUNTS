@@ -6,7 +6,7 @@
 
     <groupId>com.mdvcraft</groupId>
     <artifactId>mdvmounts</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
     <name>MDVMounts</name>
     <description>Tag-driven mount controller for MDVCRAFT.</description>
 

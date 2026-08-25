@@ -1,25 +1,24 @@
 # ==========================================================
-# MDVMounts 1.0.0
+# MDVMounts 1.0.1
 # Controlador ligero de monturas para MDVCRAFT.
 # ==========================================================
 #
 # IMPORTANTE:
-# MDVMounts NO tiene una estadística de velocidad propia.
-# Cada tick lee Attribute.MOVEMENT_SPEED de la entidad.
-# Por lo tanto, MovementSpeed de MythicMobs sigue siendo la
-# fuente de verdad y los cambios de atributo se reflejan en vivo.
+# - Los caballos reales (HORSE/DONKEY/MULE/etc.) marcados como GROUND
+#   usan el control NATIVO de Minecraft. MDVMounts no calcula su velocidad
+#   por tick: esto da la sensación vanilla real y reduce trabajo.
+# - Las monturas no nativas (voladoras, acuáticas, lava, jumper y terrestres
+#   que no sean caballos) siguen usando control manual de Paper.
+# - Para las monturas manuales, MOVEMENT_SPEED y JUMP_STRENGTH se cachean y
+#   se refrescan cada pocos ticks en lugar de consultarse cada tick.
 #
-# MDVMounts tampoco borra ni reemplaza skills de MythicMobs.
-# Mientras una montura tiene jinete, únicamente puede pausar la
-# awareness/pathfinding vanilla para que la IA no pelee contra WASD.
-# Al desmontar, restaura el estado anterior.
+# MythicMobs sigue siendo la fuente de verdad para MovementSpeed,
+# JumpStrength, vida, skills, modelos, etc.
 
 tags:
-  # Recomendado: exigir este tag además del tag de comportamiento.
   require-base-tag: true
   base: mdv_mount
 
-  # Un mob debe tener uno de estos tags.
   ground: mdv_mount_ground
   flying: mdv_mount_flying
   aquatic: mdv_mount_aquatic
@@ -27,23 +26,35 @@ tags:
   jumper: mdv_mount_jumper
 
 control:
-  # Pausa la IA/pathfinding vanilla mientras el jugador conduce.
-  # No elimina skills de MythicMobs.
+  # Pausa la IA/pathfinding vanilla mientras el jugador conduce una montura
+  # MANUAL. Los caballos GROUND nativos no se tocan para conservar su control
+  # vanilla exacto.
   pause-vanilla-ai-while-ridden: true
 
-  # Hace que la criatura mire hacia la dirección horizontal del jinete.
+  # Solo se aplica a monturas manuales. Los caballos vanilla ya rotan solos.
   rotate-mount-with-rider: true
 
   vertical-speed:
-    # Velocidad vertical base de las monturas.
-    # Valores mayores hacen que subir y bajar sea más rápido.
+    # Velocidad vertical base de las monturas tridimensionales.
     base-multiplier: 1.5
 
-    # Multiplica la velocidad base por JUMP_STRENGTH de la criatura.
-    # Permite que cada montura tenga una velocidad vertical diferente
-    # utilizando sus atributos de MythicMobs.
+    # Multiplica la velocidad vertical por JUMP_STRENGTH del mob.
     multiply-by-jump-strength: true
 
+  # Preparado para monturas donde SHIFT también se use como control vertical.
+  vertical-dismount:
+    taps: 3
+    window-ms: 900
+
+performance:
+  # Refresca MOVEMENT_SPEED y JUMP_STRENGTH cada 10 ticks (0.5 s) en las
+  # monturas manuales. No se consultan cada tick.
+  # 20 = aún más económico, pero los cambios de stats tardan hasta 1 s.
+  attribute-refresh-ticks: 10
+
+  # Los caballos GROUND nativos no necesitan controlador por tick.
+  # Sus sesiones solo hacen un chequeo de seguridad cada 20 ticks (1 s).
+  native-session-safety-check-ticks: 20
 
 messages:
   mounted: "&aMontura controlada."

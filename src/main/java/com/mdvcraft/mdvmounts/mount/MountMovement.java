@@ -14,13 +14,10 @@ public final class MountMovement {
 
   private static final double DEFAULT_JUMP_STRENGTH = 0.42D;
 
-  // How quickly the mount reaches its target speed.
-  private static final double GROUND_ACCELERATION = 0.35D;
-  private static final double AIR_ACCELERATION = 0.20D;
-
-  // How quickly the mount slows down when there is no input.
-  private static final double GROUND_FRICTION = 0.65D;
-  private static final double AIR_FRICTION = 0.85D;
+  // Vanilla-like rider input factors used by Minecraft mounted movement:
+  // backwards is noticeably slower and strafing is reduced.
+  private static final double BACKWARD_MULTIPLIER = 0.25D;
+  private static final double STRAFE_MULTIPLIER = 0.50D;
 
   private final MDVMountsPlugin plugin;
 
@@ -28,6 +25,11 @@ public final class MountMovement {
   private boolean rotateWithRider;
   private int verticalDismountTaps;
   private long verticalDismountWindowMs;
+
+  // Cached config. These used to be read from YAML every movement tick.
+  private boolean multiplyVerticalByJumpStrength;
+  private double verticalSpeedMultiplier;
+  private int attributeRefreshTicks;
 
   public MountMovement(MDVMountsPlugin plugin) {
     this.plugin = plugin;
@@ -49,11 +51,39 @@ public final class MountMovement {
         "control.rotate-mount-with-rider",
         true);
 
+    // Read once on reload, not every tick.
+    multiplyVerticalByJumpStrength = plugin.getConfig().getBoolean(
+        "control.vertical-speed.multiply-by-jump-strength",
+        true);
+
+    verticalSpeedMultiplier = plugin.getConfig().getDouble(
+        "control.vertical-speed.base-multiplier",
+        1.5D);
+
+    attributeRefreshTicks = Math.max(1, plugin.getConfig().getInt(
+        "performance.attribute-refresh-ticks",
+        10));
+
+    verticalDismountTaps = Math.max(1, plugin.getConfig().getInt(
+        "control.vertical-dismount.taps",
+        3));
+
+    verticalDismountWindowMs = Math.max(1L, plugin.getConfig().getLong(
+        "control.vertical-dismount.window-ms",
+        900L));
+
     if (previouslyPausedAi != pauseVanillaAi) {
       for (MountSession session : activeSessions) {
         if (!(session.mount() instanceof Mob mob)
             || session.originalAware() == null
             || !session.mount().isValid()) {
+          continue;
+        }
+
+        // Ground horses are delegated to Minecraft's native mounted control.
+        // Their vanilla AI state must remain untouched while ridden.
+        if (session.nativeGroundSteering()) {
+          mob.setAware(session.originalAware());
           continue;
         }
 
@@ -70,14 +100,21 @@ public final class MountMovement {
   public void prepare(MountSession session) {
     LivingEntity mount = session.mount();
 
-    if (pauseVanillaAi && mount instanceof Mob mob) {
+    // Real ground horses use native Minecraft steering: zero custom velocity
+    // work, exact vanilla WASD feel.
+    if (!session.nativeGroundSteering()
+        && pauseVanillaAi
+        && mount instanceof Mob mob) {
       mob.getPathfinder().stopPathfinding();
       mob.setAware(false);
     }
 
+    if (!session.nativeGroundSteering()) {
+      refreshNativeAttributes(session);
+    }
+
     if (session.type() == MountType.FLYING) {
-      mount.setGravity(false);
-      mount.setFallDistance(0.0F);
+      enterFreeMovement(session);
     }
   }
 
@@ -89,6 +126,8 @@ public final class MountMovement {
     }
 
     mount.setGravity(session.originalGravity());
+    session.setFreeMovementMode(false);
+    session.setManualInputActive(false);
 
     if (mount instanceof Mob mob && session.originalAware() != null) {
       mob.setAware(session.originalAware());
@@ -107,44 +146,53 @@ public final class MountMovement {
   }
 
   public void tick(MountSession session) {
+    // Exact vanilla control for actual HORSE/DONKEY/etc. ground mounts.
+    // Minecraft itself consumes the rider input, so MDVMounts has nothing to
+    // calculate here.
+    if (session.nativeGroundSteering()) {
+      return;
+    }
+
     Player player = session.player();
     LivingEntity mount = session.mount();
-    Input input = player.getCurrentInput();
 
     if (!mount.isValid() || !player.isOnline()) {
       return;
     }
 
-    if (rotateWithRider) {
+    if (session.shouldRefreshAttributes()) {
+      refreshNativeAttributes(session);
+    }
+
+    Input input = player.getCurrentInput();
+
+    if (rotateWithRider && session.shouldApplyYaw(player.getYaw())) {
       mount.setRotation(player.getYaw(), 0.0F);
     }
 
-    double speed = getNativeMovementSpeed(mount);
-    Vector horizontal = horizontalInput(player, input);
-
     switch (session.type()) {
       case GROUND ->
-        applyGroundMovement(session, input, horizontal, speed, false);
+        applyGroundMovement(session, input, false);
 
       case JUMPER ->
-        applyGroundMovement(session, input, horizontal, speed, true);
+        applyGroundMovement(session, input, true);
 
       case FLYING ->
-        applyFreeMovement(session, input, horizontal, speed);
+        applyFreeMovement(session, input);
 
       case AQUATIC -> {
         if (mount.isInWater()) {
-          applyFreeMovement(session, input, horizontal, speed);
+          applyFreeMovement(session, input);
         } else {
-          applyGroundMovement(session, input, horizontal, speed, false);
+          applyGroundMovement(session, input, false);
         }
       }
 
       case LAVA -> {
         if (mount.isInLava()) {
-          applyFreeMovement(session, input, horizontal, speed);
+          applyFreeMovement(session, input);
         } else {
-          applyGroundMovement(session, input, horizontal, speed, false);
+          applyGroundMovement(session, input, false);
         }
       }
     }
@@ -153,114 +201,77 @@ public final class MountMovement {
   private void applyGroundMovement(
       MountSession session,
       Input input,
-      Vector horizontal,
-      double speed,
       boolean autoJump) {
-    LivingEntity mount = session.mount();
 
-    mount.setGravity(session.originalGravity());
+    LivingEntity mount = session.mount();
+    leaveFreeMovement(session);
+
+    Vector horizontal = horizontalVelocity(
+        session.player(),
+        input,
+        session.cachedMovementSpeed());
+
+    boolean hasHorizontalInput = horizontal != null;
+    boolean wantsJump = input.isJump() || (autoJump && hasHorizontalInput);
+
+    // No input: let Minecraft's own ground drag/friction slow the entity.
+    // This avoids writing velocity every idle tick and feels much closer to
+    // vanilla than forcing a custom friction curve.
+    if (!hasHorizontalInput && !wantsJump) {
+      session.setManualInputActive(false);
+      return;
+    }
 
     Vector velocity = mount.getVelocity();
 
-    double targetX = 0.0D;
-    double targetZ = 0.0D;
-
-    if (horizontal.lengthSquared() > 0.0D && speed > 0.0D) {
-      Vector desired = horizontal.clone().multiply(speed);
-
-      targetX = desired.getX();
-      targetZ = desired.getZ();
+    if (hasHorizontalInput) {
+      // Immediate response: no acceleration interpolation, no input delay.
+      velocity.setX(horizontal.getX());
+      velocity.setZ(horizontal.getZ());
     }
-
-    double acceleration = GROUND_ACCELERATION;
-    double friction = GROUND_FRICTION;
-
-    // Smoothly approach the desired horizontal velocity.
-    double newX = velocity.getX()
-        + (targetX - velocity.getX()) * acceleration;
-
-    double newZ = velocity.getZ()
-        + (targetZ - velocity.getZ()) * acceleration;
-
-    // Apply friction when there is no input.
-    if (horizontal.lengthSquared() == 0.0D) {
-      newX *= friction;
-      newZ *= friction;
-    }
-
-    double y = velocity.getY();
-
-    boolean wantsJump = input.isJump()
-        || (autoJump && horizontal.lengthSquared() > 0.0D);
 
     if (wantsJump && mount.isOnGround()) {
-      y = getNativeJumpStrength(mount);
+      velocity.setY(session.cachedJumpStrength());
     }
 
-    mount.setVelocity(new Vector(newX, y, newZ));
+    mount.setVelocity(velocity);
+    session.setManualInputActive(true);
   }
 
   private void applyFreeMovement(
       MountSession session,
-      Input input,
-      Vector horizontal,
-      double speed) {
+      Input input) {
 
     LivingEntity mount = session.mount();
+    enterFreeMovement(session);
 
-    mount.setGravity(false);
-    mount.setFallDistance(0.0F);
-
-    Vector velocity = mount.getVelocity();
-
-    // Horizontal movement
-    double targetX = 0.0D;
-    double targetZ = 0.0D;
-
-    if (horizontal.lengthSquared() > 0.0D && speed > 0.0D) {
-      Vector desired = horizontal.clone().multiply(speed);
-      targetX = desired.getX();
-      targetZ = desired.getZ();
+    if (mount.getFallDistance() != 0.0F) {
+      mount.setFallDistance(0.0F);
     }
 
-    double newX = velocity.getX()
-        + (targetX - velocity.getX()) * AIR_ACCELERATION;
+    Vector horizontal = horizontalVelocity(
+        session.player(),
+        input,
+        session.cachedMovementSpeed());
 
-    double newZ = velocity.getZ()
-        + (targetZ - velocity.getZ()) * AIR_ACCELERATION;
+    double baseVerticalSpeed = session.cachedMovementSpeed() * verticalSpeedMultiplier;
 
-    if (horizontal.lengthSquared() == 0.0D) {
-      newX *= AIR_FRICTION;
-      newZ *= AIR_FRICTION;
-    }
-
-    // Vertical movement
-    boolean multiplyByJumpStrength = plugin.getConfig().getBoolean(
-        "vertical-speed.multiply-by-jump-strength",
-        true);
-
-    double verticalSpeedMultiplier = plugin.getConfig().getDouble(
-        "vertical-speed.base-multiplier",
-        1.5D);
-
-    double baseVerticalSpeed = speed * verticalSpeedMultiplier;
-
-    if (multiplyByJumpStrength) {
-      baseVerticalSpeed *= getNativeJumpStrength(mount);
+    if (multiplyVerticalByJumpStrength) {
+      baseVerticalSpeed *= session.cachedJumpStrength();
     }
 
     double targetY = 0.0D;
 
     if (input.isJump()) {
-      // SPACE: maximum upward speed
+      // Preserve the friend's current flight behaviour: SPACE climbs.
       targetY = baseVerticalSpeed;
     } else if (input.isForward() || input.isBackward()) {
       float pitch = session.player().getPitch();
 
-      // -90 = up, 0 = horizontal, +90 = down
+      // -90 = up, 0 = horizontal, +90 = down.
       double verticalFactor = -Math.sin(Math.toRadians(pitch));
 
-      // S reverses the vertical direction.
+      // S reverses the vertical direction, exactly as in the current pull.
       if (input.isBackward()) {
         verticalFactor *= -1.0D;
       }
@@ -268,57 +279,103 @@ public final class MountMovement {
       targetY = verticalFactor * baseVerticalSpeed;
     }
 
-    double newY = targetY;
+    boolean hasInput = horizontal != null || input.isJump();
 
-    mount.setVelocity(new Vector(newX, newY, newZ));
-  }
-
-  private Vector horizontalInput(Player player, Input input) {
-    double forwardInput = 0.0D;
-
-    if (input.isForward()) {
-      forwardInput += 1.0D;
+    // When the player releases everything, stop once and then stay idle.
+    // We do not keep sending a zero velocity every server tick.
+    if (!hasInput) {
+      if (session.manualInputActive()) {
+        mount.setVelocity(new Vector(0.0D, 0.0D, 0.0D));
+        session.setManualInputActive(false);
+      }
+      return;
     }
 
-    if (input.isBackward()) {
-      forwardInput -= 1.0D;
+    double x = horizontal == null ? 0.0D : horizontal.getX();
+    double z = horizontal == null ? 0.0D : horizontal.getZ();
+
+    // Immediate WASD response. The previous acceleration interpolation was the
+    // source of the delayed/heavy feeling.
+    mount.setVelocity(new Vector(x, targetY, z));
+    session.setManualInputActive(true);
+  }
+
+  /**
+   * Returns the requested horizontal velocity using vanilla-like rider input
+   * factors. Returns null when there is no horizontal input, avoiding a Vector
+   * allocation on idle ticks.
+   */
+  private Vector horizontalVelocity(Player player, Input input, double speed) {
+    if (speed <= 0.0D) {
+      return null;
+    }
+
+    double forwardInput = 0.0D;
+
+    if (input.isForward() && !input.isBackward()) {
+      forwardInput = 1.0D;
+    } else if (input.isBackward() && !input.isForward()) {
+      forwardInput = -BACKWARD_MULTIPLIER;
     }
 
     double strafeInput = 0.0D;
 
-    if (input.isRight()) {
-      strafeInput -= 1.0D;
-    }
-
-    if (input.isLeft()) {
-      strafeInput += 1.0D;
+    if (input.isLeft() && !input.isRight()) {
+      strafeInput = STRAFE_MULTIPLIER;
+    } else if (input.isRight() && !input.isLeft()) {
+      strafeInput = -STRAFE_MULTIPLIER;
     }
 
     if (forwardInput == 0.0D && strafeInput == 0.0D) {
-      return new Vector();
+      return null;
+    }
+
+    // Clamp diagonal input to avoid an artificial diagonal speed boost.
+    double inputLengthSquared = forwardInput * forwardInput + strafeInput * strafeInput;
+    if (inputLengthSquared > 1.0D) {
+      double scale = 1.0D / Math.sqrt(inputLengthSquared);
+      forwardInput *= scale;
+      strafeInput *= scale;
     }
 
     double yaw = Math.toRadians(player.getYaw());
+    double sin = Math.sin(yaw);
+    double cos = Math.cos(yaw);
 
-    Vector forward = new Vector(
-        -Math.sin(yaw),
-        0.0D,
-        Math.cos(yaw));
+    double x = (-sin * forwardInput + cos * strafeInput) * speed;
+    double z = ( cos * forwardInput + sin * strafeInput) * speed;
 
-    Vector right = new Vector(
-        Math.cos(yaw),
-        0.0D,
-        Math.sin(yaw));
+    return new Vector(x, 0.0D, z);
+  }
 
-    Vector direction = forward
-        .multiply(forwardInput)
-        .add(right.multiply(strafeInput));
-
-    if (direction.lengthSquared() > 1.0D) {
-      direction.normalize();
+  private void enterFreeMovement(MountSession session) {
+    if (session.freeMovementMode()) {
+      return;
     }
 
-    return direction;
+    LivingEntity mount = session.mount();
+    mount.setGravity(false);
+    mount.setFallDistance(0.0F);
+    session.setFreeMovementMode(true);
+  }
+
+  private void leaveFreeMovement(MountSession session) {
+    if (!session.freeMovementMode()) {
+      return;
+    }
+
+    session.mount().setGravity(session.originalGravity());
+    session.setFreeMovementMode(false);
+    session.setManualInputActive(false);
+  }
+
+  private void refreshNativeAttributes(MountSession session) {
+    LivingEntity mount = session.mount();
+
+    session.cacheAttributes(
+        getNativeMovementSpeed(mount),
+        getNativeJumpStrength(mount),
+        attributeRefreshTicks);
   }
 
   private double getNativeMovementSpeed(LivingEntity mount) {

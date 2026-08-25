@@ -20,6 +20,8 @@ public final class MountManager {
     private final Map<UUID, MountSession> sessions = new HashMap<>();
 
     private BukkitTask tickTask;
+    private long tickCounter;
+    private int nativeSafetyCheckTicks;
 
     private boolean requireBaseTag;
     private String baseTag;
@@ -62,6 +64,9 @@ public final class MountManager {
         aquaticTag = plugin.getConfig().getString("tags.aquatic", "mdv_mount_aquatic");
         lavaTag = plugin.getConfig().getString("tags.lava", "mdv_mount_lava");
         jumperTag = plugin.getConfig().getString("tags.jumper", "mdv_mount_jumper");
+
+        nativeSafetyCheckTicks = Math.max(1, plugin.getConfig().getInt(
+                "performance.native-session-safety-check-ticks", 20));
 
         movement.reloadSettings(sessions.values());
     }
@@ -177,17 +182,29 @@ public final class MountManager {
             return;
         }
 
+        tickCounter++;
+        boolean nativeSafetyCheck = tickCounter % nativeSafetyCheckTicks == 0L;
+
         Iterator<Map.Entry<UUID, MountSession>> iterator = sessions.entrySet().iterator();
         while (iterator.hasNext()) {
             MountSession session = iterator.next().getValue();
+
+            // Real ground horses are controlled 100% by Minecraft. Their
+            // normal dismount/quit/death paths are event-driven, so they only
+            // need a low-frequency safety validation instead of work every tick.
+            if (session.nativeGroundSteering() && !nativeSafetyCheck) {
+                continue;
+            }
+
             Player player = session.player();
             LivingEntity mount = session.mount();
+            Entity vehicle = player.getVehicle();
 
             if (!player.isOnline()
                     || !mount.isValid()
                     || mount.isDead()
-                    || player.getVehicle() == null
-                    || !player.getVehicle().getUniqueId().equals(mount.getUniqueId())) {
+                    || vehicle == null
+                    || !vehicle.getUniqueId().equals(mount.getUniqueId())) {
                 iterator.remove();
                 restoreAfterControl(session);
                 continue;

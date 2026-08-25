@@ -1,4 +1,4 @@
-# MDVMounts 1.0.0
+# MDVMounts 1.0.1
 
 Controlador ligero de monturas para MDVCRAFT sobre Paper/Purpur 1.21.6+.
 
@@ -10,7 +10,9 @@ MDVMounts sólo se encarga de **detectar una entidad marcada y convertir el inpu
 - MMOItems/Crucible puede crear el invocador.
 - MythicMobs define vida, `MovementSpeed`, modelos, sonidos, skills y demás stats.
 - MDVMounts **no define ni multiplica velocidades por tipo de mob**.
-- MDVMounts lee `Attribute.MOVEMENT_SPEED` de la entidad en cada tick, así que un cambio de velocidad hecho por MythicMobs se refleja mientras está montada.
+- Los caballos reales (`HORSE`, `DONKEY`, `MULE`, etc.) con tag `mdv_mount_ground` usan el control montado nativo de Minecraft: no se calcula su velocidad por tick y el WASD se siente exactamente vanilla.
+- Las monturas manuales (vuelo, agua, lava, jumper y terrestres no-caballo) usan respuesta WASD inmediata, sin interpolación de aceleración.
+- `MOVEMENT_SPEED` y `JUMP_STRENGTH` se cachean y se refrescan cada pocos ticks (10 por defecto), así los cambios de MythicMobs se siguen reflejando sin consultar atributos cada tick.
 - No hay dependencia de MythicMobs API: se usan scoreboard tags, lo que reduce muchísimo los problemas entre versiones.
 - No usa NMS ni ProtocolLib.
 
@@ -137,7 +139,7 @@ mvn clean package
 Resultado:
 
 ```text
-target/MDVMounts-1.0.0.jar
+target/MDVMounts-1.0.1.jar
 ```
 
 También se puede verificar contra otra revisión de Paper:
