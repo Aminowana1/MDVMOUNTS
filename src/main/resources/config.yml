@@ -1,5 +1,5 @@
 # ==========================================================
-# MDVMounts 1.0.6
+# MDVMounts 1.1.0
 # Controlador ligero de monturas para MDVCRAFT.
 # ==========================================================
 #
@@ -86,9 +86,68 @@ performance:
   # No se consultan cada tick.
   attribute-refresh-ticks: 10
 
+
+# ==========================================================
+# ALFORJAS / ALMACENAMIENTO EN EL INVOCADOR
+# ==========================================================
+#
+# Solo los perfiles definidos aquí tienen almacenamiento.
+# Cada ItemStack físico recibe un UUID propio al primer uso y guarda sus
+# objetos dentro del componente minecraft:container del MISMO item.
+# No usa SQLite ni archivos por montura.
+#
+# Resultado:
+# - Silbato A y Silbato B, aunque sean del mismo tipo, tienen inventarios
+#   independientes.
+# - Si otro jugador roba/recoge el Silbato A, se lleva también sus objetos.
+# - El inventario solo abre si la montura INVOCADA por ese ItemStack está
+#   cerca. Tener otro silbato igual no permite abrirlo.
+# - No hay scans periódicos: las búsquedas solo ocurren al usar el invocador.
+#
+storage:
+  enabled: true
+
+  # Distancia por defecto para abrir las alforjas. Cada perfil puede cambiarla.
+  default-interaction-distance: 3.0
+
+  # Tras un click que no abrió almacenamiento, MDVMounts deja que Crucible
+  # invoque normalmente y busca durante unos pocos ticks la nueva montura
+  # para enlazarla con ESE ItemStack físico.
+  bind-search-radius: 4.5
+  bind-attempt-delays: [1, 2, 4]
+
+  # Evita meter silbatos con almacenamiento dentro de otro silbato.
+  prevent-nested-invokers: true
+
+  profiles:
+    caravan:
+      enabled: true
+
+      # Slots REALES utilizables: 1 a 54.
+      # Si no es múltiplo de 9, los espacios sobrantes de la última fila
+      # aparecen bloqueados y no cuentan como almacenamiento.
+      slots: 27
+      title: '&6Alforjas del Caballo'
+      interaction-distance: 3.0
+
+      # Cómo reconocer este tipo de invocador la primera vez.
+      # Después queda estampado internamente y sigue siendo el mismo objeto
+      # aunque cambie de dueño.
+      invoker:
+        material: SADDLE
+        display-name: '&e&lSilbato de Caravana'
+
+      # El mob correspondiente debe tener TODOS estos scoreboard tags.
+      # Para CABALLO_CARAVANA agrega:
+      # - addtag{tag=mdv_storage_caravana} @self ~onSpawn
+      mount:
+        required-tags:
+          - mdv_storage_caravana
+
 messages:
   mounted: "&aMontura controlada."
   occupied: "&cEsta montura ya tiene un jinete."
   invalid: "&cEsta entidad no es una montura MDV válida."
   no-permission: "&cNo tienes permiso para usar monturas."
   reloaded: "&aMDVMounts recargado."
+  storage-overflow: "&eLa capacidad de esta montura fue reducida; los objetos sobrantes fueron devueltos."
