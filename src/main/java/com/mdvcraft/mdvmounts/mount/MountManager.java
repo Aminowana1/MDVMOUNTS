@@ -2,6 +2,7 @@ package com.mdvcraft.mdvmounts.mount;
 
 import com.mdvcraft.mdvmounts.MDVMountsPlugin;
 import org.bukkit.Bukkit;
+import org.bukkit.Input;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
@@ -105,6 +106,30 @@ public final class MountManager {
         return sessions.get(player.getUniqueId());
     }
 
+    /**
+     * Fast path for key transitions. Paper fires PlayerInputEvent when the
+     * client changes W/A/S/D/jump/etc.; applying that change immediately
+     * removes up to one scheduler tick of perceived steering latency.
+     */
+    public void handleInput(Player player, Input input) {
+        MountSession session = sessions.get(player.getUniqueId());
+        if (session == null || session.nativeGroundSteering()) {
+            return;
+        }
+
+        LivingEntity mount = session.mount();
+        Entity vehicle = player.getVehicle();
+        if (!player.isOnline()
+                || !mount.isValid()
+                || mount.isDead()
+                || vehicle == null
+                || !vehicle.getUniqueId().equals(mount.getUniqueId())) {
+            return;
+        }
+
+        movement.inputChanged(session, input);
+    }
+
     public boolean tryMount(Player player, LivingEntity mount) {
         Optional<MountType> typeOptional = resolveType(mount);
         if (typeOptional.isEmpty()) {
@@ -189,7 +214,7 @@ public final class MountManager {
         while (iterator.hasNext()) {
             MountSession session = iterator.next().getValue();
 
-            // Real ground horses are controlled 100% by Minecraft. Their
+            // Non-disguised real ground horses are controlled 100% by Minecraft. Their
             // normal dismount/quit/death paths are event-driven, so they only
             // need a low-frequency safety validation instead of work every tick.
             if (session.nativeGroundSteering() && !nativeSafetyCheck) {

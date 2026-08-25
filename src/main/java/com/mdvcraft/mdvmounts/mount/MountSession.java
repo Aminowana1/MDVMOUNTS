@@ -1,5 +1,8 @@
 package com.mdvcraft.mdvmounts.mount;
 
+import org.bukkit.Input;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.AbstractHorse;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
@@ -12,6 +15,7 @@ public final class MountSession {
     private final boolean originalGravity;
     private final Boolean originalAware;
     private final boolean nativeGroundSteering;
+    private final Double originalStepHeightBase;
 
     private long lastDismountTapAt;
     private int dismountTapCount;
@@ -29,6 +33,7 @@ public final class MountSession {
     private double cachedYawCos = 1.0D;
     private boolean freeMovementMode;
     private boolean manualInputActive;
+    private int lastImmediateInputMask = Integer.MIN_VALUE;
 
     public MountSession(Player player, LivingEntity mount, MountType type) {
         this.player = player;
@@ -37,10 +42,18 @@ public final class MountSession {
         this.originalGravity = mount.hasGravity();
         this.originalAware = mount instanceof Mob mob ? mob.isAware() : null;
 
-        // A real horse already has Minecraft's native mounted controls.
-        // Delegating ground horses to vanilla gives the best possible WASD
-        // feel and avoids custom velocity calculations entirely for them.
-        this.nativeGroundSteering = type == MountType.GROUND && mount instanceof AbstractHorse;
+        AttributeInstance stepHeight = mount.getAttribute(Attribute.STEP_HEIGHT);
+        this.originalStepHeightBase = stepHeight == null ? null : stepHeight.getBaseValue();
+
+        // A visible real horse already has Minecraft's native mounted controls.
+        // However, LibsDisguises/MythicMobs disguises remove that horse steering
+        // client-side when the horse is shown as another entity (for example COW).
+        // In that case we deliberately fall back to MDVMounts' immediate manual
+        // controller so W/A/S/D still works while preserving the disguise.
+        // The disguise check happens ONCE when the session is created, never per tick.
+        this.nativeGroundSteering = type == MountType.GROUND
+                && mount instanceof AbstractHorse
+                && !DisguiseSupport.isDisguised(mount);
     }
 
     public Player player() {
@@ -65,6 +78,10 @@ public final class MountSession {
 
     public boolean nativeGroundSteering() {
         return nativeGroundSteering;
+    }
+
+    public Double originalStepHeightBase() {
+        return originalStepHeightBase;
     }
 
     public boolean registerDismountTap(long now, int requiredTaps, long windowMillis) {
@@ -140,6 +157,30 @@ public final class MountSession {
 
     public void setFreeMovementMode(boolean freeMovementMode) {
         this.freeMovementMode = freeMovementMode;
+    }
+
+
+    /**
+     * Returns true only when the client input state really changed.
+     * PlayerInputEvent can be used for immediate response without doing
+     * duplicate velocity writes if the same state is reported again.
+     */
+    public boolean acceptImmediateInput(Input input) {
+        int mask = 0;
+        if (input.isForward()) mask |= 1;
+        if (input.isBackward()) mask |= 1 << 1;
+        if (input.isLeft()) mask |= 1 << 2;
+        if (input.isRight()) mask |= 1 << 3;
+        if (input.isJump()) mask |= 1 << 4;
+        if (input.isSneak()) mask |= 1 << 5;
+        if (input.isSprint()) mask |= 1 << 6;
+
+        if (mask == lastImmediateInputMask) {
+            return false;
+        }
+
+        lastImmediateInputMask = mask;
+        return true;
     }
 
     public boolean manualInputActive() {

@@ -12,6 +12,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityDismountEvent;
+import org.bukkit.event.player.PlayerInputEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -90,6 +91,14 @@ public final class MountListener implements Listener {
         } else {
             message(player, "messages.invalid", "&cEsta entidad no es una montura MDV válida.");
         }
+    }
+
+    // Immediate steering response for manual mounts. The normal 1-tick loop
+    // still maintains movement while a key remains held, but direction/key
+    // changes do not have to wait for the next scheduler pass.
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onInput(PlayerInputEvent event) {
+        mountManager.handleInput(event.getPlayer(), event.getInput());
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)

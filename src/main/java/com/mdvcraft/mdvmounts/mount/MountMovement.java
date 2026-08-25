@@ -30,6 +30,13 @@ public final class MountMovement {
   private double verticalSpeedMultiplier;
   private int attributeRefreshTicks;
 
+  // Horse-like ground feel for every manual GROUND mount. STEP_HEIGHT is
+  // applied once when the rider mounts, so one-block ledges are handled by
+  // Minecraft's own collision engine with zero block scans/raytraces per tick.
+  private boolean groundHorseFeelEnabled;
+  private double groundStepHeight;
+  private boolean immediateInputResponse;
+
   // One tiny fixed array per setting: no HashMap lookup and no YAML read in
   // the movement loop. Values are loaded only on /mdvmounts reload.
   private final double[] forwardMultipliers = new double[MountType.values().length];
@@ -70,6 +77,18 @@ public final class MountMovement {
         "performance.attribute-refresh-ticks",
         10));
 
+    groundHorseFeelEnabled = plugin.getConfig().getBoolean(
+        "control.ground-horse-feel.enabled",
+        true);
+
+    groundStepHeight = Math.max(0.0D, plugin.getConfig().getDouble(
+        "control.ground-horse-feel.step-height",
+        1.0D));
+
+    immediateInputResponse = plugin.getConfig().getBoolean(
+        "performance.immediate-input-response",
+        true);
+
     loadMovementProfiles();
 
     verticalDismountTaps = Math.max(1, plugin.getConfig().getInt(
@@ -103,13 +122,29 @@ public final class MountMovement {
         }
       }
     }
+
+    // Re-apply the one-time ground STEP_HEIGHT setting after /mdvmounts reload.
+    for (MountSession session : activeSessions) {
+      if (!session.mount().isValid() || session.nativeGroundSteering()) {
+        continue;
+      }
+      if (session.type() == MountType.GROUND) {
+        if (groundHorseFeelEnabled) {
+          applyGroundHorseFeel(session);
+        } else {
+          restoreGroundHorseFeel(session);
+        }
+      }
+    }
   }
 
   public void prepare(MountSession session) {
     LivingEntity mount = session.mount();
 
-    // Real ground horses use native Minecraft steering: zero custom velocity
-    // work, exact vanilla WASD feel.
+    // Non-disguised ground horses use native Minecraft steering: zero custom
+    // velocity work, exact vanilla WASD feel. Disguised horses intentionally
+    // fall through to the manual GROUND controller because the client loses
+    // vanilla horse steering when LibsDisguises shows another entity type.
     if (!session.nativeGroundSteering()
         && pauseVanillaAi
         && mount instanceof Mob mob) {
@@ -118,6 +153,9 @@ public final class MountMovement {
     }
 
     if (!session.nativeGroundSteering()) {
+      if (session.type() == MountType.GROUND && groundHorseFeelEnabled) {
+        applyGroundHorseFeel(session);
+      }
       refreshNativeAttributes(session);
     }
 
@@ -136,6 +174,7 @@ public final class MountMovement {
     mount.setGravity(session.originalGravity());
     session.setFreeMovementMode(false);
     session.setManualInputActive(false);
+    restoreGroundHorseFeel(session);
 
     if (mount instanceof Mob mob && session.originalAware() != null) {
       mob.setAware(session.originalAware());
@@ -154,9 +193,10 @@ public final class MountMovement {
   }
 
   public void tick(MountSession session) {
-    // Exact vanilla control for actual HORSE/DONKEY/etc. ground mounts.
+    // Exact vanilla control for non-disguised HORSE/DONKEY/etc. GROUND mounts.
     // Minecraft itself consumes the rider input, so MDVMounts has nothing to
-    // calculate here.
+    // calculate here. Disguised horses have nativeGroundSteering=false and
+    // therefore use the immediate manual GROUND path below.
     if (session.nativeGroundSteering()) {
       return;
     }
@@ -172,7 +212,33 @@ public final class MountMovement {
       refreshNativeAttributes(session);
     }
 
-    Input input = player.getCurrentInput();
+    applyInput(session, player.getCurrentInput());
+  }
+
+  /**
+   * Applies a newly received client input immediately instead of waiting for
+   * the next scheduler tick. This only runs when the input state changes; the
+   * normal tick loop then maintains movement while a key remains held.
+   */
+  public void inputChanged(MountSession session, Input input) {
+    if (!immediateInputResponse
+        || session.nativeGroundSteering()
+        || !session.acceptImmediateInput(input)) {
+      return;
+    }
+
+    Player player = session.player();
+    LivingEntity mount = session.mount();
+    if (!player.isOnline() || !mount.isValid() || mount.isDead()) {
+      return;
+    }
+
+    applyInput(session, input);
+  }
+
+  private void applyInput(MountSession session, Input input) {
+    Player player = session.player();
+    LivingEntity mount = session.mount();
 
     if (rotateWithRider && session.shouldApplyYaw(player.getYaw())) {
       mount.setRotation(player.getYaw(), 0.0F);
@@ -310,8 +376,8 @@ public final class MountMovement {
 
   /**
    * Returns the requested horizontal velocity using the cached profile for the
-   * session type. Native GROUND horses never reach this method: Minecraft
-   * handles their movement itself.
+   * session type. Native, non-disguised GROUND horses never reach this method: Minecraft
+   * handles their movement itself. Disguised horses do reach it intentionally.
    */
   private Vector horizontalVelocity(MountSession session, Input input, double speed) {
     if (speed <= 0.0D) {
@@ -406,6 +472,35 @@ public final class MountMovement {
     session.mount().setGravity(session.originalGravity());
     session.setFreeMovementMode(false);
     session.setManualInputActive(false);
+  }
+
+  private void applyGroundHorseFeel(MountSession session) {
+    if (session.type() != MountType.GROUND || session.nativeGroundSteering()) {
+      return;
+    }
+
+    AttributeInstance stepHeight = session.mount().getAttribute(Attribute.STEP_HEIGHT);
+    if (stepHeight == null) {
+      return;
+    }
+
+    // Never reduce an entity that already has a larger native step height.
+    double desired = Math.max(stepHeight.getBaseValue(), groundStepHeight);
+    if (Double.compare(stepHeight.getBaseValue(), desired) != 0) {
+      stepHeight.setBaseValue(desired);
+    }
+  }
+
+  private void restoreGroundHorseFeel(MountSession session) {
+    Double original = session.originalStepHeightBase();
+    if (original == null || !session.mount().isValid()) {
+      return;
+    }
+
+    AttributeInstance stepHeight = session.mount().getAttribute(Attribute.STEP_HEIGHT);
+    if (stepHeight != null && Double.compare(stepHeight.getBaseValue(), original) != 0) {
+      stepHeight.setBaseValue(original);
+    }
   }
 
   private void refreshNativeAttributes(MountSession session) {
