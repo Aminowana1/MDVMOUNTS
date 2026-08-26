@@ -90,5 +90,12 @@ mvn clean package
 Resultado:
 
 ```text
-target/MDVMounts-1.1.1.jar
+target/MDVMounts-1.1.2.jar
 ```
+
+## 1.1.2 - aislamiento de almacenamiento por invocador
+
+- El contenido sigue viviendo dentro del `ItemStack` mediante `minecraft:container`.
+- Cada invocación exitosa genera un UUID de enlace nuevo entre ese silbato físico y su montura.
+- Al guardar un GUI, MDVMounts escribe primero en el slot exacto desde el que se abrió, evitando contaminar otro invocador con un UUID duplicado.
+- No se añadieron timers ni cambios al controlador de movimiento.

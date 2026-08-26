@@ -212,15 +212,19 @@ public final class InvokerStorageManager {
             return;
         }
 
-        UUID storageId = readStorageId(item);
-        if (storageId == null) {
-            storageId = UUID.randomUUID();
-        }
+        // The UUID is only the live binding between THIS physical invoker and
+        // the mount created by this invocation. Generate a fresh one for every
+        // successful summon attempt instead of reusing a possibly duplicated
+        // UUID copied from another ItemStack. The container contents remain on
+        // the ItemStack and are not touched by this rotation.
+        UUID previousStorageId = readStorageId(item);
+        UUID bindingId = UUID.randomUUID();
 
         Set<UUID> existing = collectMatchingEntityIds(player, profile, bindSearchRadius);
         long token = System.nanoTime();
         int inventorySlot = player.getInventory().getHeldItemSlot();
-        PendingBinding pending = new PendingBinding(storageId, profile.key(), existing, token, inventorySlot);
+        PendingBinding pending = new PendingBinding(
+                bindingId, previousStorageId, profile.key(), existing, token, inventorySlot);
         pendingBindings.put(player.getUniqueId(), pending);
 
         for (int i = 0; i < bindAttemptDelays.size(); i++) {
@@ -258,7 +262,12 @@ public final class InvokerStorageManager {
             return;
         }
 
-        LocatedItem located = findItemByStorageId(player, session.storageId());
+        // Prefer the exact hotbar slot that opened this GUI. This prevents a
+        // duplicated/copy-pasted invoker UUID elsewhere in the inventory from
+        // receiving the contents by mistake. The global UUID scan remains only
+        // as a defensive fallback for external plugins that physically move
+        // the item while the menu is open.
+        LocatedItem located = findSessionInvoker(player, session);
         if (located != null) {
             writeContents(located.item(), session.inventory(), session.profile().slots());
             located.writeBack();
@@ -378,7 +387,12 @@ public final class InvokerStorageManager {
 
         storageViewers.put(storageId, player.getUniqueId());
         openSessions.put(player.getUniqueId(), new OpenStorageSession(
-                player.getUniqueId(), storageId, mountId, profile, inventory));
+                player.getUniqueId(),
+                storageId,
+                mountId,
+                profile,
+                inventory,
+                player.getInventory().getHeldItemSlot()));
         player.openInventory(inventory);
     }
 
@@ -442,18 +456,29 @@ public final class InvokerStorageManager {
             }
 
             UUID currentId = readStorageId(invoker);
-            if (currentId != null && !currentId.equals(pending.storageId())) {
-                // The player swapped a different already-stamped invoker into
-                // that slot during the tiny binding window. Never cross-link.
+            if (pending.previousStorageId() == null) {
+                if (currentId != null) {
+                    // A different already-stamped invoker was swapped into
+                    // the hotbar slot during the short binding window.
+                    pendingBindings.remove(playerId);
+                    return;
+                }
+            } else if (!pending.previousStorageId().equals(currentId)) {
+                // The item in the slot is no longer the one that triggered
+                // this invocation. Never bind the spawned mount to it.
                 pendingBindings.remove(playerId);
                 return;
             }
 
-            stampIdentity(invoker, profile, pending.storageId());
+            // Rotate the live binding UUID on every successful summon.
+            // This is deliberate: two physical invokers that were duplicated
+            // with the same PDC UUID must never keep sharing a live identity.
+            // Their minecraft:container data stays attached to each ItemStack.
+            stampIdentity(invoker, profile, pending.bindingId());
             player.getInventory().setItem(pending.inventorySlot(), invoker);
 
             PersistentDataContainer pdc = best.getPersistentDataContainer();
-            pdc.set(entityStorageIdKey, PersistentDataType.STRING, pending.storageId().toString());
+            pdc.set(entityStorageIdKey, PersistentDataType.STRING, pending.bindingId().toString());
             pdc.set(entityProfileKey, PersistentDataType.STRING, profile.key());
             pendingBindings.remove(playerId);
             return;
@@ -585,6 +610,23 @@ public final class InvokerStorageManager {
         invoker.setData(DataComponentTypes.CONTAINER, ItemContainerContents.containerContents(contents));
     }
 
+    private LocatedItem findSessionInvoker(Player player, OpenStorageSession session) {
+        if (player == null || session == null) {
+            return null;
+        }
+
+        int slot = session.invokerSlot();
+        PlayerInventory inventory = player.getInventory();
+        if (slot >= 0 && slot < inventory.getSize()) {
+            ItemStack exact = inventory.getItem(slot);
+            if (session.storageId().equals(readStorageIdSafe(exact))) {
+                return new LocatedItem(exact, () -> inventory.setItem(slot, exact));
+            }
+        }
+
+        return findItemByStorageId(player, session.storageId());
+    }
+
     private LocatedItem findItemByStorageId(Player player, UUID storageId) {
         LocatedItem preferred = findItemByStorageIdInPlayer(player, storageId);
         if (preferred != null) {
@@ -683,7 +725,8 @@ public final class InvokerStorageManager {
     }
 
     private record PendingBinding(
-            UUID storageId,
+            UUID bindingId,
+            UUID previousStorageId,
             String profileKey,
             Set<UUID> existingEntityIds,
             long token,

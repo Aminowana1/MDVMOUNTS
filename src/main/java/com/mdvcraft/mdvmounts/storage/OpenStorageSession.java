@@ -9,5 +9,6 @@ public record OpenStorageSession(
         UUID storageId,
         UUID mountId,
         InvokerStorageProfile profile,
-        Inventory inventory) {
+        Inventory inventory,
+        int invokerSlot) {
 }
