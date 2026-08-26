@@ -1,5 +1,5 @@
 # ==========================================================
-# MDVMounts 1.1.5
+# MDVMounts 1.1.6
 # Controlador ligero de monturas para MDVCRAFT.
 # ==========================================================
 #
@@ -37,6 +37,16 @@ control:
   # Opciones: LEFT_CLICK, RIGHT_CLICK, SHIFT_LEFT_CLICK, SHIFT_RIGHT_CLICK
   # LEFT_CLICK conserva el comportamiento actual.
   storage-open-interaction: LEFT_CLICK
+
+  # Acción que Crucible/MythicMobs usa para INVOCAR la montura.
+  # Esta opción NO ejecuta la invocación: solo le dice a MDVMounts cuándo
+  # preparar el enlace entre el ItemStack físico y la entidad recién creada.
+  #
+  # Opciones: AUTO, LEFT_CLICK, RIGHT_CLICK, SHIFT_LEFT_CLICK, SHIFT_RIGHT_CLICK
+  # AUTO (recomendado) escucha cualquier combinación y solo enlaza si realmente
+  # aparece una montura nueva compatible. Así puedes cambiar ~onUse/~onSwing
+  # en Crucible sin volver a tocar esta config.
+  storage-invocation-interaction: AUTO
 
   # Habilidad activa de la montura.
   # La skill se toma de un scoreboard tag del mob. Ejemplo:

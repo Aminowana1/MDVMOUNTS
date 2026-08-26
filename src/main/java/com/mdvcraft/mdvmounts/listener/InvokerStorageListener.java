@@ -34,14 +34,18 @@ public final class InvokerStorageListener implements Listener {
     }
 
     /**
-     * Storage opening is configurable through:
+     * Storage opening and post-invocation binding are independent:
+     *
      * control.storage-open-interaction
+     *   -> which click opens the already-bound storage.
      *
-     * Supported values:
-     * LEFT_CLICK, RIGHT_CLICK, SHIFT_LEFT_CLICK, SHIFT_RIGHT_CLICK.
+     * control.storage-invocation-interaction
+     *   -> which click arms the short post-summon binding window.
+     *      AUTO listens to every supported click combination.
      *
-     * A right click that is not consumed by an actual storage opening remains
-     * available to Crucible/MythicMobs for normal mount invocation.
+     * Storage always gets first chance. If it actually opens, the click is
+     * consumed and no binding is armed. Otherwise the configured invocation
+     * interaction remains untouched for Crucible/MythicMobs.
      */
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onUse(PlayerInteractEvent event) {
@@ -54,31 +58,38 @@ public final class InvokerStorageListener implements Listener {
             return;
         }
 
+        Player player = event.getPlayer();
         Action action = event.getAction();
+
         if (action == Action.LEFT_CLICK_AIR || action == Action.LEFT_CLICK_BLOCK) {
-            if (storageManager.shouldOpenFromLeftClick(event.getPlayer())
-                    && storageManager.tryOpen(event.getPlayer(), item)) {
+            if (storageManager.shouldOpenFromLeftClick(player)
+                    && storageManager.tryOpen(player, item)) {
                 cancelUse(event);
+                return;
+            }
+
+            if (storageManager.shouldArmBindingFromLeftClick(player)) {
+                storageManager.armBindingAfterInvocation(player, item);
             }
             return;
         }
 
         if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
-            if (storageManager.shouldOpenFromRightClick(event.getPlayer())
-                    && storageManager.tryOpen(event.getPlayer(), item)) {
+            if (storageManager.shouldOpenFromRightClick(player)
+                    && storageManager.tryOpen(player, item)) {
                 cancelUse(event);
                 return;
             }
 
-            // Storage did not open: preserve Crucible/MythicMobs right-click
-            // invocation exactly as before and only arm the post-summon link.
-            storageManager.armBindingAfterInvocation(event.getPlayer(), item);
+            if (storageManager.shouldArmBindingFromRightClick(player)) {
+                storageManager.armBindingAfterInvocation(player, item);
+            }
         }
     }
 
-    // Right-clicking an entity can also be a Crucible use. If RIGHT_CLICK or
-    // SHIFT_RIGHT_CLICK is configured, storage gets first chance to consume the
-    // click only when the exact bound mount is already nearby.
+    // Right-clicking an entity can also be the invocation interaction. Storage
+    // gets first chance only when the configured right-click variant matches
+    // and the exact bound mount is already close enough.
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onUseOnEntity(PlayerInteractEntityEvent event) {
         if (event.getHand() != EquipmentSlot.HAND) {
@@ -92,7 +103,10 @@ public final class InvokerStorageListener implements Listener {
             event.setCancelled(true);
             return;
         }
-        storageManager.armBindingAfterInvocation(player, item);
+
+        if (storageManager.shouldArmBindingFromRightClick(player)) {
+            storageManager.armBindingAfterInvocation(player, item);
+        }
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
@@ -108,24 +122,30 @@ public final class InvokerStorageListener implements Listener {
             event.setCancelled(true);
             return;
         }
-        storageManager.armBindingAfterInvocation(player, item);
+
+        if (storageManager.shouldArmBindingFromRightClick(player)) {
+            storageManager.armBindingAfterInvocation(player, item);
+        }
     }
 
-    // A direct left click on an entity is represented as an attack event. Only
-    // consume it when the configured interaction is a left-click variant and a
-    // valid bound mount is actually in range.
+    // A direct left click on an entity is represented as an attack event.
+    // Do not cancel normal damage unless storage truly opened. If it did not,
+    // the same click may still be used by Crucible (~onSwing) to invoke.
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onLeftClickEntity(EntityDamageByEntityEvent event) {
         if (!(event.getDamager() instanceof Player player)) {
             return;
         }
-        if (!storageManager.shouldOpenFromLeftClick(player)) {
+
+        ItemStack item = player.getInventory().getItemInMainHand();
+        if (storageManager.shouldOpenFromLeftClick(player)
+                && storageManager.tryOpen(player, item)) {
+            event.setCancelled(true);
             return;
         }
 
-        ItemStack item = player.getInventory().getItemInMainHand();
-        if (storageManager.tryOpen(player, item)) {
-            event.setCancelled(true);
+        if (storageManager.shouldArmBindingFromLeftClick(player)) {
+            storageManager.armBindingAfterInvocation(player, item);
         }
     }
 

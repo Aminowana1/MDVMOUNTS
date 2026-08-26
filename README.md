@@ -1,4 +1,4 @@
-# MDVMounts 1.1.5
+# MDVMounts 1.1.6
 
 Controlador ligero de monturas para MDVCRAFT sobre Paper/Purpur 1.21.6+.
 
@@ -98,6 +98,9 @@ La integración con MythicMobs usa un bridge ligero: descubre y cachea `BukkitAP
 
 ## Almacenamiento por invocador
 
+Desde 1.1.6, la apertura del almacenamiento y el click de invocación se configuran por separado. `control.storage-invocation-interaction: AUTO` es el modo recomendado: permite usar `~onUse`, `~onSwing` o variantes con Shift sin perder el enlace físico entre silbato y montura.
+
+
 Se mantiene el comportamiento de 1.1.3:
 
 - cada ItemStack físico conserva su propio `minecraft:container`;
@@ -133,5 +136,5 @@ mvn clean package
 Resultado:
 
 ```text
-target/MDVMounts-1.1.5.jar
+target/MDVMounts-1.1.6.jar
 ```

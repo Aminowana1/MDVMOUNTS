@@ -56,6 +56,7 @@ public final class InvokerStorageManager {
     private double bindSearchRadius;
     private boolean preventNestedInvokers;
     private StorageOpenInteraction openInteraction = StorageOpenInteraction.LEFT_CLICK;
+    private BindingInteraction bindingInteraction = BindingInteraction.AUTO;
     private List<Long> bindAttemptDelays = List.of(1L, 2L, 4L);
 
     public InvokerStorageManager(MDVMountsPlugin plugin) {
@@ -89,6 +90,16 @@ public final class InvokerStorageManager {
             plugin.getLogger().warning("config.yml control.storage-open-interaction='"
                     + configuredInteraction + "' no es válido. Se usará LEFT_CLICK.");
             openInteraction = StorageOpenInteraction.LEFT_CLICK;
+        }
+
+        String configuredBindingInteraction = plugin.getConfig().getString(
+                "control.storage-invocation-interaction",
+                "AUTO");
+        bindingInteraction = BindingInteraction.parse(configuredBindingInteraction);
+        if (bindingInteraction == null) {
+            plugin.getLogger().warning("config.yml control.storage-invocation-interaction='"
+                    + configuredBindingInteraction + "' no es válido. Se usará AUTO.");
+            bindingInteraction = BindingInteraction.AUTO;
         }
 
         List<Integer> configuredDelays = config.getIntegerList("bind-attempt-delays");
@@ -180,6 +191,14 @@ public final class InvokerStorageManager {
 
     public boolean shouldOpenFromRightClick(Player player) {
         return player != null && openInteraction.matches(true, player.isSneaking());
+    }
+
+    public boolean shouldArmBindingFromLeftClick(Player player) {
+        return player != null && bindingInteraction.matches(false, player.isSneaking());
+    }
+
+    public boolean shouldArmBindingFromRightClick(Player player) {
+        return player != null && bindingInteraction.matches(true, player.isSneaking());
     }
 
     /**
@@ -820,10 +839,7 @@ public final class InvokerStorageManager {
         }
 
         boolean matches(boolean rightClick, boolean sneaking) {
-            if (this.rightClick != rightClick) {
-                return false;
-            }
-            return !requiresSneak || sneaking;
+            return this.rightClick == rightClick && this.requiresSneak == sneaking;
         }
 
         static StorageOpenInteraction parse(String raw) {
@@ -837,6 +853,50 @@ public final class InvokerStorageManager {
                 normalized = "SHIFT_LEFT_CLICK";
             } else if (normalized.equals("SNEAK_RIGHT_CLICK")) {
                 normalized = "SHIFT_RIGHT_CLICK";
+            }
+            try {
+                return valueOf(normalized);
+            } catch (IllegalArgumentException ignored) {
+                return null;
+            }
+        }
+    }
+
+    private enum BindingInteraction {
+        AUTO(null, null),
+        LEFT_CLICK(false, false),
+        RIGHT_CLICK(true, false),
+        SHIFT_LEFT_CLICK(false, true),
+        SHIFT_RIGHT_CLICK(true, true);
+
+        private final Boolean rightClick;
+        private final Boolean requiresSneak;
+
+        BindingInteraction(Boolean rightClick, Boolean requiresSneak) {
+            this.rightClick = rightClick;
+            this.requiresSneak = requiresSneak;
+        }
+
+        boolean matches(boolean rightClick, boolean sneaking) {
+            if (this == AUTO) {
+                return true;
+            }
+            return this.rightClick == rightClick && this.requiresSneak == sneaking;
+        }
+
+        static BindingInteraction parse(String raw) {
+            if (raw == null || raw.isBlank()) {
+                return AUTO;
+            }
+            String normalized = raw.trim().toUpperCase()
+                    .replace('-', '_')
+                    .replace(' ', '_');
+            if (normalized.equals("SNEAK_LEFT_CLICK")) {
+                normalized = "SHIFT_LEFT_CLICK";
+            } else if (normalized.equals("SNEAK_RIGHT_CLICK")) {
+                normalized = "SHIFT_RIGHT_CLICK";
+            } else if (normalized.equals("ANY") || normalized.equals("AUTOMATIC")) {
+                normalized = "AUTO";
             }
             try {
                 return valueOf(normalized);

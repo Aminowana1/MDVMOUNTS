@@ -39,7 +39,7 @@ public final class MDVMountsPlugin extends JavaPlugin {
         }
 
         mountManager.start();
-        getLogger().info("MDVMounts 1.1.5 habilitado. Habilidades con apuntado del jinete + dash preservado.");
+        getLogger().info("MDVMounts 1.1.6 habilitado. Enlace flexible de invocadores + habilidades con apuntado del jinete.");
     }
 
     @Override
