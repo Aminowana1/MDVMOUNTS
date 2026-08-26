@@ -1,5 +1,5 @@
 # ==========================================================
-# MDVMounts 1.1.6
+# MDVMounts 1.1.7
 # Controlador ligero de monturas para MDVCRAFT.
 # ==========================================================
 #
@@ -10,7 +10,9 @@
 # las claves nuevas se agregan sin reemplazar tus valores existentes.
 #
 # Rendimiento:
-# - Sin raytraces ni búsquedas de bloques por tick.
+# - Las monturas normales no hacen raytraces ni búsquedas de bloques por tick.
+# - Solo una montura con mdv_mount_climber hace 1-2 comprobaciones de bloque
+#   mientras el jinete intenta moverse contra una pared.
 # - MOVEMENT_SPEED y JUMP_STRENGTH se cachean.
 # - STEP_HEIGHT se aplica una vez al montar y Minecraft resuelve los escalones.
 # - Los cambios de input pueden aplicarse inmediatamente con PlayerInputEvent.
@@ -24,6 +26,14 @@ tags:
   aquatic: mdv_mount_aquatic
   lava: mdv_mount_lava
   jumper: mdv_mount_jumper
+
+  # Añadir junto a mdv_mount + mdv_mount_ground para permitir trepar
+  # paredes altas como una araña, manteniendo STEP_HEIGHT=1 para escalones.
+  climber: mdv_mount_climber
+
+  # Tag independiente para CAMEL vanilla. No requiere mdv_mount:
+  # conserva conducción y dos pasajeros vanilla, pero SPACE hace salto normal.
+  camel-normal-jump: mdv_mount_camel_normal_jump
 
 control:
   # Pausa la IA/pathfinding vanilla mientras el jugador conduce una montura.
@@ -78,11 +88,27 @@ control:
     # 8 ticks = 0.4 segundos.
     preserve-skill-velocity-ticks: 8
 
+  # CAMEL vanilla con salto normal en lugar del dash.
+  # Solo actúa en camellos con el tag tags.camel-normal-jump.
+  # El primer pasajero es el conductor; el segundo sigue siendo pasajero.
+  camel-normal-jump:
+    enabled: true
+    jump-velocity: 0.55
+
   # Sensación tipo caballo para TODAS las monturas GROUND.
   # Usa STEP_HEIGHT nativo: no busca bloques ni hace raytraces.
   ground-horse-feel:
     enabled: true
     step-height: 1.0
+
+  # Trepado tipo araña para GROUND + tags.climber.
+  # Un escalón de 1 bloque sigue resolviéndose con STEP_HEIGHT.
+  # En una pared de 2+ bloques, mientras el jinete empuje hacia ella,
+  # la montura gana velocidad vertical hasta superar el borde.
+  wall-climbing:
+    enabled: true
+    vertical-speed: 0.22
+    probe-distance: 0.12
 
   # Porcentajes de movimiento horizontal por controlador.
   # 100 = MovementSpeed completo; 50 = mitad; 25 = un cuarto.

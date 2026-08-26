@@ -105,6 +105,10 @@ public final class MountListener implements Listener {
             return;
         }
 
+        // Also clears the rising-edge state used by tagged native camels,
+        // which do not create a normal MDVMounts session.
+        mountManager.clearInputState(player);
+
         MountSession session = mountManager.getSession(player);
         if (session == null || !event.getDismounted().getUniqueId().equals(session.mount().getUniqueId())) {
             return;

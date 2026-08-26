@@ -1,0 +1,37 @@
+MDVMounts 1.1.7 - cambios
+
+1) CAMEL vanilla con salto normal
+Tag:
+  mdv_mount_camel_normal_jump
+
+No requiere mdv_mount ni mdv_mount_ground.
+Conserva conducción vanilla y 2 pasajeros.
+SPACE aplica un salto vertical configurable y MDVMounts intenta suprimir el dash nativo
+en la transición de pulsar/soltar y nuevamente al tick siguiente.
+
+Config:
+  control.camel-normal-jump.enabled: true
+  control.camel-normal-jump.jump-velocity: 0.55
+
+2) Montura trepadora
+Tag:
+  mdv_mount_climber
+
+Usar junto a:
+  mdv_mount
+  mdv_mount_ground
+
+Mantiene STEP_HEIGHT=1.0 para escalones normales.
+Frente a paredes de 2+ bloques sube verticalmente mientras el jinete mantenga movimiento
+hacia la pared. Puede escalar paredes altas.
+
+Config:
+  control.wall-climbing.enabled: true
+  control.wall-climbing.vertical-speed: 0.22
+  control.wall-climbing.probe-distance: 0.12
+
+Rendimiento:
+- No hay raytrace.
+- No hay getNearbyEntities.
+- No hay pathfinding adicional.
+- Solo los climbers en movimiento hacen 1-2 Block#isPassable por tick.

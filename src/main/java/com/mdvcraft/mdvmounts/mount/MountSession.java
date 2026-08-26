@@ -14,6 +14,7 @@ public final class MountSession {
     private final boolean originalGravity;
     private final Boolean originalAware;
     private final Double originalStepHeightBase;
+    private boolean wallClimber;
 
 
     // Cached native attributes. They are refreshed periodically instead of
@@ -38,10 +39,14 @@ public final class MountSession {
     private int skillAimTicksRemaining;
     private int skillVelocityOverrideTicksRemaining;
 
-    public MountSession(Player player, LivingEntity mount, MountType type) {
+    public MountSession(Player player,
+                        LivingEntity mount,
+                        MountType type,
+                        boolean wallClimber) {
         this.player = player;
         this.mount = mount;
         this.type = type;
+        this.wallClimber = wallClimber;
         this.originalGravity = mount.hasGravity();
         this.originalAware = mount instanceof Mob mob ? mob.isAware() : null;
 
@@ -71,6 +76,14 @@ public final class MountSession {
 
     public Double originalStepHeightBase() {
         return originalStepHeightBase;
+    }
+
+    public boolean wallClimber() {
+        return wallClimber;
+    }
+
+    public void setWallClimber(boolean wallClimber) {
+        this.wallClimber = wallClimber;
     }
 
     public double cachedMovementSpeed() {

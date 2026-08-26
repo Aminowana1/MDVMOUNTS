@@ -3,11 +3,13 @@ package com.mdvcraft.mdvmounts.mount;
 import com.mdvcraft.mdvmounts.MDVMountsPlugin;
 
 import org.bukkit.Input;
+import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
+import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 
 public final class MountMovement {
@@ -34,6 +36,13 @@ public final class MountMovement {
   private boolean groundHorseFeelEnabled;
   private double groundStepHeight;
   private boolean immediateInputResponse;
+
+  // Optional spider-like climbing for tagged GROUND mounts. Normal ground
+  // mounts still do zero block probes. A climber checks only the blocks
+  // directly in the requested movement direction while the rider is moving.
+  private boolean wallClimbingEnabled;
+  private double wallClimbVerticalSpeed;
+  private double wallClimbProbeDistance;
 
   // One tiny fixed array per setting: no HashMap lookup and no YAML read in
   // the movement loop. Values are loaded only on /mdvmounts reload.
@@ -86,6 +95,18 @@ public final class MountMovement {
     immediateInputResponse = plugin.getConfig().getBoolean(
         "performance.immediate-input-response",
         true);
+
+    wallClimbingEnabled = plugin.getConfig().getBoolean(
+        "control.wall-climbing.enabled",
+        true);
+
+    wallClimbVerticalSpeed = Math.max(0.0D, plugin.getConfig().getDouble(
+        "control.wall-climbing.vertical-speed",
+        0.22D));
+
+    wallClimbProbeDistance = Math.max(0.01D, plugin.getConfig().getDouble(
+        "control.wall-climbing.probe-distance",
+        0.12D));
 
     loadMovementProfiles();
 
@@ -293,8 +314,20 @@ public final class MountMovement {
       velocity.setZ(horizontal.getZ());
     }
 
+    boolean climbWall = wallClimbingEnabled
+        && session.wallClimber()
+        && hasHorizontalInput
+        && shouldClimbWall(mount, horizontal);
+
+    // A normal ground jump still has priority. Once airborne and pressed
+    // against a wall, the climber keeps gaining Y until it reaches the top.
     if (wantsJump && mount.isOnGround()) {
       velocity.setY(session.cachedJumpStrength());
+    } else if (climbWall) {
+      velocity.setY(Math.max(velocity.getY(), wallClimbVerticalSpeed));
+      if (mount.getFallDistance() != 0.0F) {
+        mount.setFallDistance(0.0F);
+      }
     }
 
     mount.setVelocity(velocity);
@@ -428,6 +461,89 @@ public final class MountMovement {
     double z = ( cos * forwardInput + sin * strafeInput) * speed;
 
     return new Vector(x, 0.0D, z);
+  }
+
+  /**
+   * Detects a real wall directly in the requested horizontal direction.
+   *
+   * On ground we require TWO blocked heights. That deliberately leaves a
+   * one-block ledge to STEP_HEIGHT=1.0, so climbers still walk up normal
+   * steps instead of visibly "climbing" them. Once already airborne against
+   * the wall, the lower probe is enough so the entity can crest the top edge.
+   *
+   * Cost: at most two Block#isPassable checks per moving climber per tick.
+   * There are no raytraces, nearby-entity scans or pathfinding calls.
+   */
+  private boolean shouldClimbWall(LivingEntity mount, Vector horizontal) {
+    double lengthSquared = horizontal.getX() * horizontal.getX()
+        + horizontal.getZ() * horizontal.getZ();
+
+    if (lengthSquared < 1.0E-8D) {
+      return false;
+    }
+
+    double inverseLength = 1.0D / Math.sqrt(lengthSquared);
+    double dirX = horizontal.getX() * inverseLength;
+    double dirZ = horizontal.getZ() * inverseLength;
+
+    BoundingBox box = mount.getBoundingBox();
+    double centerX = (box.getMinX() + box.getMaxX()) * 0.5D;
+    double centerZ = (box.getMinZ() + box.getMaxZ()) * 0.5D;
+    double halfX = (box.getMaxX() - box.getMinX()) * 0.5D;
+    double halfZ = (box.getMaxZ() - box.getMinZ()) * 0.5D;
+
+    // Distance from AABB centre to the first side hit by a ray travelling in
+    // the requested movement direction, plus a tiny probe outside the hitbox.
+    double edgeX = Math.abs(dirX) < 1.0E-8D
+        ? Double.POSITIVE_INFINITY
+        : halfX / Math.abs(dirX);
+    double edgeZ = Math.abs(dirZ) < 1.0E-8D
+        ? Double.POSITIVE_INFINITY
+        : halfZ / Math.abs(dirZ);
+    double leadingEdge = Math.min(edgeX, edgeZ) + wallClimbProbeDistance;
+
+    double probeX = centerX + dirX * leadingEdge;
+    double probeZ = centerZ + dirZ * leadingEdge;
+    double baseY = box.getMinY();
+
+    World world = mount.getWorld();
+    int blockX = floorToBlock(probeX);
+    int blockZ = floorToBlock(probeZ);
+
+    boolean lowerBlocked = isBlocked(
+        world,
+        blockX,
+        floorToBlock(baseY + 0.20D),
+        blockZ);
+
+    if (!lowerBlocked) {
+      return false;
+    }
+
+    // While already climbing, keep moving upward until the lower collision is
+    // cleared. This gives enough height to step onto the top of tall walls.
+    if (!mount.isOnGround()) {
+      return true;
+    }
+
+    boolean upperBlocked = isBlocked(
+        world,
+        blockX,
+        floorToBlock(baseY + 1.05D),
+        blockZ);
+
+    return upperBlocked;
+  }
+
+  private boolean isBlocked(World world, int x, int y, int z) {
+    if (y < world.getMinHeight() || y >= world.getMaxHeight()) {
+      return false;
+    }
+    return !world.getBlockAt(x, y, z).isPassable();
+  }
+
+  private int floorToBlock(double coordinate) {
+    return (int) Math.floor(coordinate);
   }
 
   private void loadMovementProfiles() {

@@ -3,12 +3,15 @@ package com.mdvcraft.mdvmounts.mount;
 import com.mdvcraft.mdvmounts.MDVMountsPlugin;
 import org.bukkit.Bukkit;
 import org.bukkit.Input;
+import org.bukkit.entity.Camel;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.util.Vector;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
@@ -29,6 +32,15 @@ public final class MountManager {
     private String aquaticTag;
     private String lavaTag;
     private String jumperTag;
+    private String climberTag;
+    private String camelNormalJumpTag;
+
+    private boolean camelNormalJumpEnabled;
+    private double camelNormalJumpVelocity;
+
+    // PlayerInputEvent can also fire when W/A/S/D changes while SPACE remains
+    // held. Remember the rising edge so a native camel jumps only once.
+    private final Set<UUID> nativeCamelJumpHeld = new HashSet<>();
 
     public MountManager(MDVMountsPlugin plugin) {
         this.plugin = plugin;
@@ -63,6 +75,23 @@ public final class MountManager {
         aquaticTag = plugin.getConfig().getString("tags.aquatic", "mdv_mount_aquatic");
         lavaTag = plugin.getConfig().getString("tags.lava", "mdv_mount_lava");
         jumperTag = plugin.getConfig().getString("tags.jumper", "mdv_mount_jumper");
+        climberTag = plugin.getConfig().getString("tags.climber", "mdv_mount_climber");
+        camelNormalJumpTag = plugin.getConfig().getString(
+                "tags.camel-normal-jump",
+                "mdv_mount_camel_normal_jump");
+
+        camelNormalJumpEnabled = plugin.getConfig().getBoolean(
+                "control.camel-normal-jump.enabled",
+                true);
+        camelNormalJumpVelocity = Math.max(0.0D, plugin.getConfig().getDouble(
+                "control.camel-normal-jump.jump-velocity",
+                0.55D));
+
+        for (MountSession session : sessions.values()) {
+            session.setWallClimber(
+                    session.type() == MountType.GROUND
+                            && session.mount().getScoreboardTags().contains(climberTag));
+        }
 
         movement.reloadSettings(sessions.values());
     }
@@ -109,6 +138,7 @@ public final class MountManager {
     public void handleInput(Player player, Input input) {
         MountSession session = sessions.get(player.getUniqueId());
         if (session == null) {
+            handleNativeCamelInput(player, input);
             return;
         }
 
@@ -149,13 +179,19 @@ public final class MountManager {
             return false;
         }
 
-        MountSession session = new MountSession(player, mount, typeOptional.get());
+        MountSession session = new MountSession(
+                player,
+                mount,
+                typeOptional.get(),
+                typeOptional.get() == MountType.GROUND
+                        && mount.getScoreboardTags().contains(climberTag));
         sessions.put(player.getUniqueId(), session);
         prepareForControl(session);
         return true;
     }
 
     public void releaseAfterNaturalDismount(Player player) {
+        clearInputState(player);
         MountSession session = sessions.remove(player.getUniqueId());
         if (session != null) {
             restoreAfterControl(session);
@@ -163,6 +199,7 @@ public final class MountManager {
     }
 
     public void forceDismount(Player player) {
+        clearInputState(player);
         MountSession session = sessions.remove(player.getUniqueId());
         if (session == null) {
             return;
@@ -175,6 +212,72 @@ public final class MountManager {
             // desmontaje no interceptará este desmontaje programático.
             player.leaveVehicle();
         }
+    }
+
+    public void clearInputState(Player player) {
+        nativeCamelJumpHeld.remove(player.getUniqueId());
+    }
+
+    /**
+     * Special handling for a real vanilla Camel that intentionally does NOT
+     * use mdv_mount/mdv_mount_ground. Only the first passenger drives it.
+     *
+     * SPACE becomes a small normal vertical jump and the native camel dash is
+     * suppressed on both the press and release transitions.
+     */
+    private void handleNativeCamelInput(Player player, Input input) {
+        UUID playerId = player.getUniqueId();
+        Entity vehicle = player.getVehicle();
+
+        if (!camelNormalJumpEnabled
+                || !(vehicle instanceof Camel camel)
+                || !camel.getScoreboardTags().contains(camelNormalJumpTag)
+                || camel.getPassengers().isEmpty()
+                || !camel.getPassengers().getFirst().getUniqueId().equals(playerId)) {
+            nativeCamelJumpHeld.remove(playerId);
+            return;
+        }
+
+        boolean jumpPressed = input.isJump();
+        boolean wasHeld = nativeCamelJumpHeld.contains(playerId);
+
+        if (jumpPressed) {
+            nativeCamelJumpHeld.add(playerId);
+        } else {
+            nativeCamelJumpHeld.remove(playerId);
+        }
+
+        // Kill any dash state immediately. The same guard is repeated next
+        // tick because vanilla camel movement is processed after client input.
+        camel.setDashing(false);
+        suppressCamelDashNextTick(player, camel);
+
+        if (!jumpPressed || wasHeld || !camel.isOnGround()) {
+            return;
+        }
+
+        Vector velocity = camel.getVelocity();
+        velocity.setY(camelNormalJumpVelocity);
+        camel.setVelocity(velocity);
+    }
+
+    private void suppressCamelDashNextTick(Player player, Camel camel) {
+        UUID playerId = player.getUniqueId();
+        UUID camelId = camel.getUniqueId();
+
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!player.isOnline()
+                    || !camel.isValid()
+                    || camel.isDead()
+                    || player.getVehicle() == null
+                    || !player.getVehicle().getUniqueId().equals(camelId)
+                    || !camel.getScoreboardTags().contains(camelNormalJumpTag)
+                    || camel.getPassengers().isEmpty()
+                    || !camel.getPassengers().getFirst().getUniqueId().equals(playerId)) {
+                return;
+            }
+            camel.setDashing(false);
+        });
     }
 
     public int activeCount() {

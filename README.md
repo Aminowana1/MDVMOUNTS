@@ -1,8 +1,8 @@
-# MDVMounts 1.1.6
+# MDVMounts 1.1.7
 
 Controlador ligero de monturas para MDVCRAFT sobre Paper/Purpur 1.21.6+.
 
-La movilidad estable y el almacenamiento por invocador de 1.1.3 se conservan. Esta versión añade habilidades activables desde el input del jinete mediante scoreboard tags.
+La movilidad estable, el almacenamiento por invocador y las habilidades activas se conservan. 1.1.7 añade salto normal para CAMEL vanilla mediante tag y trepado tipo araña para monturas GROUND.
 
 ## Habilidades de montura por tags
 
@@ -90,9 +90,58 @@ Para `@LivingInCone`, MythicMobs requiere activar explícitamente el pitch del c
 
 Cuando una skill cambia inmediatamente la velocidad de la montura (por ejemplo `lunge`), MDVMounts detecta ese cambio y deja de sobrescribir la velocidad con WASD durante `preserve-skill-velocity-ticks`. Esto evita que un dash se cancele por estar manteniendo W/A/S/D. Las skills que no cambian la velocidad, como proyectiles o sonidos, no activan esta pausa de movimiento.
 
+## Camello vanilla: SPACE como salto normal
+
+Un `CAMEL` real puede conservar sus dos pasajeros y su conducción vanilla sin
+añadir `mdv_mount` ni `mdv_mount_ground`. Basta con:
+
+```yaml
+- addtag{tag=mdv_mount_camel_normal_jump} @self ~onSpawn
+```
+
+La fuerza del salto vive en:
+
+```yaml
+control:
+  camel-normal-jump:
+    enabled: true
+    jump-velocity: 0.55
+```
+
+MDVMounts escucha `PlayerInputEvent` incluso sin crear una sesión manual para
+ese camello. Solo el primer pasajero conduce. En cada transición de SPACE
+desactiva el estado de dash del CAMEL y, al pulsar desde el suelo, conserva X/Z
+vanilla y sustituye únicamente Y por el salto configurado.
+
+## Trepado de paredes
+
+Para una montura manual terrestre:
+
+```yaml
+- addtag{tag=mdv_mount} @self ~onSpawn
+- addtag{tag=mdv_mount_ground} @self ~onSpawn
+- addtag{tag=mdv_mount_climber} @self ~onSpawn
+```
+
+`STEP_HEIGHT=1.0` sigue resolviendo escalones normales. El trepado solo entra
+cuando hay una pared real delante: en suelo exige obstáculo a dos alturas para
+no confundir un escalón de un bloque con una pared; una vez trepando, mantiene
+Y positiva hasta superar el borde.
+
+```yaml
+control:
+  wall-climbing:
+    enabled: true
+    vertical-speed: 0.22
+    probe-distance: 0.12
+```
+
+No hay raytraces ni búsquedas de entidades. Solo el climber que se está moviendo
+hace una o dos comprobaciones `Block#isPassable` en la dirección solicitada.
+
 ## Rendimiento
 
-No se añade ningún timer, búsqueda global ni scan periódico. MDVMounts ya recibe `PlayerInputEvent`; el nuevo módulo sólo revisa los scoreboard tags de la montura cuando el input configurado cambia de suelto a pulsado.
+No se añade ningún timer global nuevo ni scan de entidades. El salto del camello usa `PlayerInputEvent`. El trepado reutiliza el tick de movimiento que ya existe y sólo, para una montura marcada como `mdv_mount_climber` que está intentando moverse, consulta 1-2 bloques inmediatamente delante de su hitbox.
 
 La integración con MythicMobs usa un bridge ligero: descubre y cachea `BukkitAPIHelper.castSkill(...)` una vez al iniciar. No realiza búsquedas de métodos en cada pulsación.
 
@@ -136,5 +185,5 @@ mvn clean package
 Resultado:
 
 ```text
-target/MDVMounts-1.1.6.jar
+target/MDVMounts-1.1.7.jar
 ```
