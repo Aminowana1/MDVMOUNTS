@@ -1,0 +1,10 @@
+MDVMounts 1.1.9 - Restauración de flying-mount-max-water-depth
+
+- Se restaura control.flying-mount-max-water-depth (default: 4).
+- Solo afecta a sesiones FLYING.
+- -1 deshabilita la restricción.
+- La config se cachea en /mdvmounts reload; no se lee YAML por tick.
+- Solo cuando una montura FLYING ya está en agua se revisan hasta N bloques
+  verticales directos (4 por defecto), sin raytrace ni búsquedas de entidades.
+- Al alcanzar la profundidad configurada se desmonta al jinete y se restaura
+  correctamente la sesión de movimiento.

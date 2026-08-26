@@ -1,0 +1,18 @@
+MDVMounts 1.1.10
+
+- Endurece mdv_mount_camel_normal_jump para que el CAMEL no pueda ejecutar
+  funcionalmente su dash vanilla aunque SPACE se mantenga o se pulse repetidamente.
+- El guard anti-dash permanece activo durante todo el viaje del conductor,
+  no solo durante una ventana corta tras soltar SPACE.
+- Se mantiene la cancelación de HorseJumpEvent.
+- Se añade una última barrera event-driven con Paper EntityMoveEvent:
+  conserva Y para el salto normal y recorta únicamente desplazamientos
+  horizontales anormalmente grandes propios del dash.
+- No hay scans del mundo, raytraces ni búsquedas de entidades.
+- Se conserva control vanilla del CAMEL, dos pasajeros, protección de caída,
+  trepado de otras monturas y flying-mount-max-water-depth.
+- HorseJumpEvent arma además un bloqueo horizontal de 3 ticks: el siguiente
+  movimiento de ese intento conserva Y pero descarta X/Z. Así el salto custom
+  puede subir, pero un dash vanilla no puede desplazarse horizontalmente.
+- Si por orden interno de Paper no llega el flag de dashing, EntityMoveEvent
+  conserva un último clamp por MOVEMENT_SPEED como red de seguridad.

@@ -3,6 +3,10 @@ package com.mdvcraft.mdvmounts.mount;
 import com.mdvcraft.mdvmounts.MDVMountsPlugin;
 import org.bukkit.Bukkit;
 import org.bukkit.Input;
+import org.bukkit.Location;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.block.Block;
 import org.bukkit.entity.Camel;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
@@ -39,17 +43,36 @@ public final class MountManager {
     private boolean camelNormalJumpEnabled;
     private double camelNormalJumpVelocity;
 
+    // Maximum number of consecutive water blocks above the flying mount
+    // before the rider is forced to dismount. Cached on reload so movement
+    // ticks never read YAML. -1 disables the restriction.
+    private int flyingMountMaxWaterDepth;
+
     // PlayerInputEvent can also fire when W/A/S/D changes while SPACE remains
     // held. Remember the rising edge so a tagged native camel jumps only once.
     private final Set<UUID> nativeCamelJumpHeld = new HashSet<>();
 
-    // Vanilla camels can apply their dash a little later than PlayerInputEvent.
-    // Keep a tiny guard only for players currently holding SPACE and for a few
-    // ticks after release. This is NOT a global entity scan: it contains only
-    // active tagged-camel drivers that have actually used the jump key.
-    private static final int CAMEL_DASH_RELEASE_GUARD_TICKS = 8;
+    // Tagged native camels are guarded for the entire ride once their driver
+    // produces input. This avoids any release-timing race where vanilla could
+    // arm a delayed dash after the old short guard window expired.
+    //
+    // There is still no world/entity scan: this map contains only active
+    // drivers of tagged camels that have actually sent PlayerInputEvent.
     private final Map<UUID, UUID> nativeCamelDashGuardMounts = new HashMap<>();
-    private final Map<UUID, Integer> nativeCamelDashReleaseTicks = new HashMap<>();
+
+    // A HorseJumpEvent arms a tiny 3-tick one-shot horizontal block. If
+    // vanilla still tries to turn that jump into a camel dash, the next
+    // EntityMoveEvent keeps only Y and discards the horizontal dash movement.
+    // Entries expire automatically, so a camel that never moves is not left
+    // with stale state.
+    private static final int CAMEL_HARD_DASH_BLOCK_TICKS = 3;
+    private final Map<UUID, Integer> nativeCamelHardDashBlockTicks = new HashMap<>();
+
+    // Final safety net for Paper/Purpur's client-assisted camel dash:
+    // any abnormally large horizontal movement is clamped by EntityMoveEvent.
+    // Normal riding at MOVEMENT_SPEED is left untouched.
+    private static final double CAMEL_MAX_HORIZONTAL_SPEED_MULTIPLIER = 1.75D;
+    private static final double CAMEL_MIN_HORIZONTAL_SPEED_CAP = 0.45D;
 
     public MountManager(MDVMountsPlugin plugin) {
         this.plugin = plugin;
@@ -76,7 +99,7 @@ public final class MountManager {
         sessions.clear();
         nativeCamelJumpHeld.clear();
         nativeCamelDashGuardMounts.clear();
-        nativeCamelDashReleaseTicks.clear();
+        nativeCamelHardDashBlockTicks.clear();
     }
 
     public void reloadSettings() {
@@ -101,6 +124,12 @@ public final class MountManager {
         camelNormalJumpVelocity = Math.max(0.0D, plugin.getConfig().getDouble(
                 "control.camel-normal-jump.jump-velocity",
                 0.55D));
+
+        // Restored legacy flying-water safety. Read once on reload, never from
+        // YAML in the per-tick loop. -1 keeps flying mounts unrestricted.
+        flyingMountMaxWaterDepth = plugin.getConfig().getInt(
+                "control.flying-mount-max-water-depth",
+                4);
 
         for (MountSession session : sessions.values()) {
             session.setWallClimber(
@@ -245,7 +274,6 @@ public final class MountManager {
         UUID playerId = player.getUniqueId();
         nativeCamelJumpHeld.remove(playerId);
         nativeCamelDashGuardMounts.remove(playerId);
-        nativeCamelDashReleaseTicks.remove(playerId);
     }
 
     /**
@@ -261,6 +289,13 @@ public final class MountManager {
             return false;
         }
 
+        // Arm the movement-level one-shot before the event is cancelled. If
+        // vanilla still applies a dash impulse later in the same/next tick,
+        // EntityMoveEvent will preserve Y but discard X/Z for that attempt.
+        nativeCamelHardDashBlockTicks.put(
+                camel.getUniqueId(),
+                CAMEL_HARD_DASH_BLOCK_TICKS);
+
         camel.setDashing(false);
         return true;
     }
@@ -270,13 +305,15 @@ public final class MountManager {
      * use mdv_mount/mdv_mount_ground. Only the first passenger drives it.
      *
      * SPACE becomes a small normal vertical jump. The vanilla dash is blocked
-     * in three layers:
+     * in four layers:
      * 1) immediately on every PlayerInputEvent,
-     * 2) every tick while SPACE is held + a short release window,
-     * 3) HorseJumpEvent is cancelled by MountListener for tagged camels.
+     * 2) every tick for the rest of the tagged-camel ride,
+     * 3) HorseJumpEvent is cancelled by MountListener,
+     * 4) EntityMoveEvent clamps any horizontal dash impulse that still slips
+     *    through Paper/Purpur's client-assisted jump timing.
      *
-     * The repeating guard is extremely small: it only iterates players that
-     * are actively using SPACE on a tagged camel; there is no world/entity scan.
+     * There is no world/entity scan. The repeating guard only contains active
+     * tagged-camel drivers, while the final clamp is event-driven.
      */
     private void handleNativeCamelInput(Player player, Input input) {
         UUID playerId = player.getUniqueId();
@@ -285,7 +322,6 @@ public final class MountManager {
         if (!isTaggedNativeCamelDriver(player, vehicle)) {
             nativeCamelJumpHeld.remove(playerId);
             nativeCamelDashGuardMounts.remove(playerId);
-            nativeCamelDashReleaseTicks.remove(playerId);
             return;
         }
 
@@ -293,21 +329,20 @@ public final class MountManager {
         boolean jumpPressed = input.isJump();
         boolean wasHeld = nativeCamelJumpHeld.contains(playerId);
 
+        // Once this driver has produced input, keep the camel guarded for the
+        // rest of the ride. Releasing SPACE no longer opens a timing window.
         nativeCamelDashGuardMounts.put(playerId, camel.getUniqueId());
+
+        // Kill the vanilla dash state immediately on every input update.
         camel.setDashing(false);
 
         if (jumpPressed) {
             nativeCamelJumpHeld.add(playerId);
-            // Keep this armed as long as SPACE remains held.
-            nativeCamelDashReleaseTicks.put(playerId, CAMEL_DASH_RELEASE_GUARD_TICKS);
         } else {
             nativeCamelJumpHeld.remove(playerId);
-            // Vanilla may process the release after the input event. Keep
-            // suppressing for a few ticks so a late dash cannot slip through.
-            nativeCamelDashReleaseTicks.put(playerId, CAMEL_DASH_RELEASE_GUARD_TICKS);
         }
 
-        // Rising edge only: holding SPACE never repeats normal jumps in mid-air.
+        // Rising edge only. Holding SPACE never repeats the custom jump.
         if (!jumpPressed || wasHeld || !camel.isOnGround()) {
             return;
         }
@@ -331,11 +366,26 @@ public final class MountManager {
     /**
      * Hard guard against delayed vanilla camel dash application.
      *
-     * Cost: O(number of tagged camel drivers currently holding/recently
-     * releasing SPACE). Normally this is zero, and even with several players
-     * it is only a UUID lookup + vehicle/tag check + setDashing(false).
+     * Cost: O(number of active tagged-camel drivers already seen through
+     * PlayerInputEvent). There is no world scan: each entry is only a player
+     * lookup + vehicle/tag check + setDashing(false). The one-shot hard block
+     * map normally contains zero entries and expires after three ticks.
      */
     private void tickNativeCamelDashGuards() {
+        if (!nativeCamelHardDashBlockTicks.isEmpty()) {
+            Iterator<Map.Entry<UUID, Integer>> hardIterator =
+                    nativeCamelHardDashBlockTicks.entrySet().iterator();
+            while (hardIterator.hasNext()) {
+                Map.Entry<UUID, Integer> entry = hardIterator.next();
+                int remaining = entry.getValue() - 1;
+                if (remaining <= 0) {
+                    hardIterator.remove();
+                } else {
+                    entry.setValue(remaining);
+                }
+            }
+        }
+
         if (nativeCamelDashGuardMounts.isEmpty()) {
             return;
         }
@@ -355,31 +405,110 @@ public final class MountManager {
                     || !vehicle.getUniqueId().equals(camelId)) {
                 iterator.remove();
                 nativeCamelJumpHeld.remove(playerId);
-                nativeCamelDashReleaseTicks.remove(playerId);
                 continue;
             }
 
-            Camel camel = (Camel) vehicle;
-            boolean held = nativeCamelJumpHeld.contains(playerId);
-            int releaseTicks = nativeCamelDashReleaseTicks.getOrDefault(playerId, 0);
+            // Permanent per-ride guard. Even if vanilla re-arms the dash while
+            // SPACE is held, released, or spammed, the state is cleared again
+            // on the next server tick.
+            ((Camel) vehicle).setDashing(false);
+        }
+    }
 
-            if (!held && releaseTicks <= 0) {
-                iterator.remove();
-                nativeCamelDashReleaseTicks.remove(playerId);
-                continue;
-            }
+    /**
+     * Hard movement-level anti-dash safety net.
+     *
+     * Paper's camel dash is partly driven by client jump input. HorseJumpEvent
+     * cancellation + setDashing(false) are normally enough, but a vanilla
+     * horizontal impulse can still be applied in an unlucky ordering.
+     *
+     * This method is called only from Paper's EntityMoveEvent. For tagged
+     * camels it:
+     * - always clears the dashing state;
+     * - preserves vertical motion (our normal jump);
+     * - clamps only abnormal horizontal displacement.
+     *
+     * Normal vanilla riding is not touched because the cap is derived from
+     * the camel's real MOVEMENT_SPEED attribute.
+     */
+    public boolean suppressNativeCamelDashMotion(Camel camel, Location from, Location to) {
+        if (!camelNormalJumpEnabled
+                || camelNormalJumpTag == null
+                || camelNormalJumpTag.isBlank()
+                || !camel.getScoreboardTags().contains(camelNormalJumpTag)) {
+            return false;
+        }
 
-            // Do this every tick while SPACE is held and during the short
-            // release guard. This prevents the native dash state from surviving
-            // any ordering difference between client input and camel ticking.
-            camel.setDashing(false);
+        boolean hardBlock = nativeCamelHardDashBlockTicks.remove(camel.getUniqueId()) != null;
+        boolean wasDashing = camel.isDashing();
+        camel.setDashing(false);
 
-            if (held) {
-                nativeCamelDashReleaseTicks.put(playerId, CAMEL_DASH_RELEASE_GUARD_TICKS);
-            } else {
-                nativeCamelDashReleaseTicks.put(playerId, releaseTicks - 1);
+        double dx = to.getX() - from.getX();
+        double dz = to.getZ() - from.getZ();
+        double horizontalDistance = Math.sqrt(dx * dx + dz * dz);
+
+        // Strongest path: if Paper emitted HorseJumpEvent or the camel actually
+        // entered dashing state, this movement gets ZERO horizontal dash.
+        // Vertical Y is intentionally left untouched so the custom normal jump
+        // still works.
+        if (hardBlock || wasDashing) {
+            to.setX(from.getX());
+            to.setZ(from.getZ());
+            return true;
+        }
+
+        AttributeInstance movementSpeed = camel.getAttribute(Attribute.MOVEMENT_SPEED);
+        double configuredSpeed = movementSpeed == null ? 0.30D : movementSpeed.getValue();
+        double maxHorizontal = Math.max(
+                CAMEL_MIN_HORIZONTAL_SPEED_CAP,
+                configuredSpeed * CAMEL_MAX_HORIZONTAL_SPEED_MULTIPLIER);
+
+        if (horizontalDistance <= maxHorizontal) {
+            return false;
+        }
+
+        // Last fallback for a client-assisted dash whose flag was already
+        // cleared before EntityMoveEvent: cap the horizontal displacement to
+        // ordinary riding speed while preserving direction and Y.
+        if (horizontalDistance > 0.0D) {
+            double scale = maxHorizontal / horizontalDistance;
+            to.setX(from.getX() + dx * scale);
+            to.setZ(from.getZ() + dz * scale);
+        }
+
+        return true;
+    }
+
+    /**
+     * Returns true when a FLYING mount is submerged at least the configured
+     * number of water blocks. This preserves the old MDVMounts behaviour while
+     * keeping it cheap: only active flying sessions already inside water run
+     * at most N direct block checks (N=4 by default).
+     */
+    private boolean shouldDismountFlyingMountForWaterDepth(MountSession session) {
+        if (session.type() != MountType.FLYING
+                || flyingMountMaxWaterDepth < 0) {
+            return false;
+        }
+
+        LivingEntity mount = session.mount();
+        if (!mount.isInWater()) {
+            return false;
+        }
+
+        // A value of 0 means any contact with water is enough to dismount.
+        if (flyingMountMaxWaterDepth == 0) {
+            return true;
+        }
+
+        Block currentBlock = mount.getLocation().getBlock();
+        for (int i = 0; i < flyingMountMaxWaterDepth; i++) {
+            if (!currentBlock.getRelative(0, i, 0).isLiquid()) {
+                return false;
             }
         }
+
+        return true;
     }
 
     public int activeCount() {
@@ -418,6 +547,18 @@ public final class MountManager {
                     || !vehicle.getUniqueId().equals(mount.getUniqueId())) {
                 iterator.remove();
                 restoreAfterControl(session);
+                continue;
+            }
+
+            if (shouldDismountFlyingMountForWaterDepth(session)) {
+                // Remove the session before leaveVehicle() so EntityDismountEvent
+                // sees no active session and cannot perform duplicate cleanup.
+                iterator.remove();
+                clearInputState(player);
+                restoreAfterControl(session);
+                if (player.getVehicle() != null) {
+                    player.leaveVehicle();
+                }
                 continue;
             }
 

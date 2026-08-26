@@ -210,3 +210,10 @@ Resultado:
 ```text
 target/MDVMounts-1.1.8.jar
 ```
+
+
+## 1.1.10
+
+- `mdv_mount_camel_normal_jump` ahora usa un bloqueo anti-dash de cuatro capas: input, guard por tick del conductor, `HorseJumpEvent` y clamp horizontal en `EntityMoveEvent`.
+- El salto custom conserva su componente vertical y el camello sigue siendo vanilla con dos pasajeros.
+- Se mantiene `control.flying-mount-max-water-depth`.

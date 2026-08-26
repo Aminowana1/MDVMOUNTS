@@ -1,9 +1,11 @@
 package com.mdvcraft.mdvmounts.listener;
 
+import io.papermc.paper.event.entity.EntityMoveEvent;
 import com.mdvcraft.mdvmounts.MDVMountsPlugin;
 import com.mdvcraft.mdvmounts.mount.MountManager;
 import com.mdvcraft.mdvmounts.mount.MountSession;
 import org.bukkit.ChatColor;
+import org.bukkit.entity.Camel;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
@@ -115,6 +117,29 @@ public final class MountListener implements Listener {
         }
 
         event.setCancelled(true);
+    }
+
+    /**
+     * Final hard stop for the native camel dash.
+     *
+     * EntityMoveEvent is cancellable/mutable on Paper. Instead of cancelling
+     * the whole move (which would also kill our vertical jump), MDVMounts keeps
+     * Y intact and clamps only an abnormal horizontal dash displacement.
+     *
+     * Event-driven: no entity scan and no extra scheduler.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onTaggedCamelMove(EntityMoveEvent event) {
+        if (!(event.getEntity() instanceof Camel camel)) {
+            return;
+        }
+
+        org.bukkit.Location to = event.getTo().clone();
+        if (!mountManager.suppressNativeCamelDashMotion(camel, event.getFrom(), to)) {
+            return;
+        }
+
+        event.setTo(to);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)

@@ -1,5 +1,5 @@
 # ==========================================================
-# MDVMounts 1.1.9
+# MDVMounts 1.1.10
 # Controlador ligero de monturas para MDVCRAFT.
 # ==========================================================
 #
@@ -47,6 +47,12 @@ control:
 
   # La entidad gira con la cámara del jinete.
   rotate-mount-with-rider: true
+
+  # Profundidad máxima que una montura FLYING puede tolerar bajo el agua.
+  # Al alcanzar esta profundidad, el jinete se desmonta automáticamente.
+  # Solo se comprueba en monturas voladoras que YA están dentro del agua.
+  # -1 deshabilita por completo esta restricción.
+  flying-mount-max-water-depth: 4
 
   # Acción usada para abrir el almacenamiento del invocador cuando SU
   # montura está invocada y dentro de la distancia configurada.
@@ -96,7 +102,9 @@ control:
 
   # CAMEL vanilla con salto normal en lugar del dash.
   # Solo actúa en camellos con el tag tags.camel-normal-jump.
-  # El dash vanilla se cancela de forma estricta incluso al mantener SPACE.
+  # El dash vanilla se bloquea en input, HorseJumpEvent y movimiento real.
+  # Incluso manteniendo o spameando SPACE, cualquier impulso horizontal
+  # anormal de dash se recorta antes de convertirse en desplazamiento.
   # El primer pasajero es el conductor; el segundo sigue siendo pasajero.
   camel-normal-jump:
     enabled: true
