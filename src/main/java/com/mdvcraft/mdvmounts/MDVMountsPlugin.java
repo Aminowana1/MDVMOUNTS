@@ -34,7 +34,7 @@ public final class MDVMountsPlugin extends JavaPlugin {
         }
 
         mountManager.start();
-        getLogger().info("MDVMounts 1.1.1 habilitado. Movilidad estable + almacenamiento por invocador.");
+        getLogger().info("MDVMounts 1.1.3 habilitado. Movilidad estable + almacenamiento por invocador.");
     }
 
     @Override

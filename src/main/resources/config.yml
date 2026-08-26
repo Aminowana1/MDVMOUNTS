@@ -1,9 +1,9 @@
 # ==========================================================
-# MDVMounts 1.1.1
+# MDVMounts 1.1.3
 # Controlador ligero de monturas para MDVCRAFT.
 # ==========================================================
 #
-# Este archivo contiene SOLO movilidad y mensajes generales.
+# Este archivo contiene movilidad, controles y mensajes generales.
 # Los inventarios por invocador viven en storage.yml.
 #
 # Las configs se auto-actualizan: al iniciar o ejecutar /mdvmounts reload,
@@ -31,6 +31,12 @@ control:
 
   # La entidad gira con la cámara del jinete.
   rotate-mount-with-rider: true
+
+  # Acción usada para abrir el almacenamiento del invocador cuando SU
+  # montura está invocada y dentro de la distancia configurada.
+  # Opciones: LEFT_CLICK, RIGHT_CLICK, SHIFT_LEFT_CLICK, SHIFT_RIGHT_CLICK
+  # LEFT_CLICK conserva el comportamiento actual.
+  storage-open-interaction: LEFT_CLICK
 
   # Sensación tipo caballo para TODAS las monturas GROUND.
   # Usa STEP_HEIGHT nativo: no busca bloques ni hace raytraces.

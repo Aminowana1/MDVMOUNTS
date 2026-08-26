@@ -1,8 +1,10 @@
 package com.mdvcraft.mdvmounts.storage;
 
 import com.mdvcraft.mdvmounts.MDVMountsPlugin;
+import io.papermc.paper.datacomponent.DataComponentType;
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.ItemContainerContents;
+import io.papermc.paper.datacomponent.item.TooltipDisplay;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
@@ -53,6 +55,7 @@ public final class InvokerStorageManager {
     private double defaultInteractionDistance;
     private double bindSearchRadius;
     private boolean preventNestedInvokers;
+    private StorageOpenInteraction openInteraction = StorageOpenInteraction.LEFT_CLICK;
     private List<Long> bindAttemptDelays = List.of(1L, 2L, 4L);
 
     public InvokerStorageManager(MDVMountsPlugin plugin) {
@@ -77,6 +80,16 @@ public final class InvokerStorageManager {
                 1.0D,
                 16.0D);
         preventNestedInvokers = config.getBoolean("prevent-nested-invokers", true);
+
+        String configuredInteraction = plugin.getConfig().getString(
+                "control.storage-open-interaction",
+                "LEFT_CLICK");
+        openInteraction = StorageOpenInteraction.parse(configuredInteraction);
+        if (openInteraction == null) {
+            plugin.getLogger().warning("config.yml control.storage-open-interaction='"
+                    + configuredInteraction + "' no es válido. Se usará LEFT_CLICK.");
+            openInteraction = StorageOpenInteraction.LEFT_CLICK;
+        }
 
         List<Integer> configuredDelays = config.getIntegerList("bind-attempt-delays");
         if (configuredDelays.isEmpty()) {
@@ -136,6 +149,13 @@ public final class InvokerStorageManager {
                     displayName == null ? "" : displayName,
                     List.copyOf(requiredTags)));
         }
+
+        // One lightweight inventory pass on enable/reload so invokers that
+        // already contained items before 1.1.3 also lose the vanilla
+        // shulker-like container preview immediately. No repeating task.
+        for (Player online : Bukkit.getOnlinePlayers()) {
+            refreshContainerTooltip(online);
+        }
     }
 
     public void shutdown() {
@@ -152,6 +172,37 @@ public final class InvokerStorageManager {
 
     public boolean isEnabled() {
         return enabled;
+    }
+
+    public boolean shouldOpenFromLeftClick(Player player) {
+        return player != null && openInteraction.matches(false, player.isSneaking());
+    }
+
+    public boolean shouldOpenFromRightClick(Player player) {
+        return player != null && openInteraction.matches(true, player.isSneaking());
+    }
+
+    /**
+     * Applies the tooltip migration to a player's already-existing invokers.
+     * This only scans the inventory when the player joins or configs reload.
+     */
+    public void refreshContainerTooltip(Player player) {
+        if (!enabled || player == null) {
+            return;
+        }
+
+        PlayerInventory inventory = player.getInventory();
+        for (int slot = 0; slot < inventory.getSize(); slot++) {
+            ItemStack item = inventory.getItem(slot);
+            if (item == null || item.isEmpty() || resolveProfile(item) == null) {
+                continue;
+            }
+            if (item.getData(DataComponentTypes.CONTAINER) == null) {
+                continue;
+            }
+            hideContainerTooltip(item);
+            inventory.setItem(slot, item);
+        }
     }
 
     /**
@@ -587,6 +638,7 @@ public final class InvokerStorageManager {
         pdc.set(itemStorageIdKey, PersistentDataType.STRING, storageId.toString());
         pdc.set(itemProfileKey, PersistentDataType.STRING, profile.key());
         item.setItemMeta(meta);
+        hideContainerTooltip(item);
     }
 
     private UUID readStorageId(ItemStack item) {
@@ -608,6 +660,35 @@ public final class InvokerStorageManager {
             }
         }
         invoker.setData(DataComponentTypes.CONTAINER, ItemContainerContents.containerContents(contents));
+        hideContainerTooltip(invoker);
+    }
+
+    private void hideContainerTooltip(ItemStack item) {
+        if (item == null || item.isEmpty()) {
+            return;
+        }
+
+        TooltipDisplay existing = item.getData(DataComponentTypes.TOOLTIP_DISPLAY);
+        Set<DataComponentType> hidden = new HashSet<>();
+        boolean hideWholeTooltip = false;
+
+        if (existing != null) {
+            hidden.addAll(existing.hiddenComponents());
+            hideWholeTooltip = existing.hideTooltip();
+        }
+
+        // Preserve every tooltip rule another plugin/item already had and only
+        // add CONTAINER. This hides the vanilla list of stored items while the
+        // custom name, lore and all normal visible lines remain untouched.
+        if (!hidden.add(DataComponentTypes.CONTAINER) && existing != null) {
+            return;
+        }
+
+        TooltipDisplay display = TooltipDisplay.tooltipDisplay()
+                .hideTooltip(hideWholeTooltip)
+                .hiddenComponents(Set.copyOf(hidden))
+                .build();
+        item.setData(DataComponentTypes.TOOLTIP_DISPLAY, display);
     }
 
     private LocatedItem findSessionInvoker(Player player, OpenStorageSession session) {
@@ -721,6 +802,47 @@ public final class InvokerStorageManager {
             return UUID.fromString(value);
         } catch (IllegalArgumentException ignored) {
             return null;
+        }
+    }
+
+    private enum StorageOpenInteraction {
+        LEFT_CLICK(false, false),
+        RIGHT_CLICK(true, false),
+        SHIFT_LEFT_CLICK(false, true),
+        SHIFT_RIGHT_CLICK(true, true);
+
+        private final boolean rightClick;
+        private final boolean requiresSneak;
+
+        StorageOpenInteraction(boolean rightClick, boolean requiresSneak) {
+            this.rightClick = rightClick;
+            this.requiresSneak = requiresSneak;
+        }
+
+        boolean matches(boolean rightClick, boolean sneaking) {
+            if (this.rightClick != rightClick) {
+                return false;
+            }
+            return !requiresSneak || sneaking;
+        }
+
+        static StorageOpenInteraction parse(String raw) {
+            if (raw == null || raw.isBlank()) {
+                return LEFT_CLICK;
+            }
+            String normalized = raw.trim().toUpperCase()
+                    .replace('-', '_')
+                    .replace(' ', '_');
+            if (normalized.equals("SNEAK_LEFT_CLICK")) {
+                normalized = "SHIFT_LEFT_CLICK";
+            } else if (normalized.equals("SNEAK_RIGHT_CLICK")) {
+                normalized = "SHIFT_RIGHT_CLICK";
+            }
+            try {
+                return valueOf(normalized);
+            } catch (IllegalArgumentException ignored) {
+                return null;
+            }
         }
     }
 
