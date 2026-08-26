@@ -31,9 +31,6 @@ tags:
   # paredes altas como una araña, manteniendo STEP_HEIGHT=1 para escalones.
   climber: mdv_mount_climber
 
-  # Tag independiente para CAMEL vanilla. No requiere mdv_mount:
-  # conserva conducción y dos pasajeros vanilla, pero SPACE hace salto normal.
-  camel-normal-jump: mdv_mount_camel_normal_jump
 
   # Protección de caída para el/los pasajeros.
   # Solo se consulta cuando Bukkit ya está procesando daño FALL de un jugador:
@@ -100,16 +97,6 @@ control:
     # 8 ticks = 0.4 segundos.
     preserve-skill-velocity-ticks: 8
 
-  # CAMEL vanilla con salto normal en lugar del dash.
-  # Solo actúa en camellos con el tag tags.camel-normal-jump.
-  # Con ProtocolLib 5.4.0+, START_RIDING_JUMP y STOP_RIDING_JUMP se
-  # cancelan ANTES de que vanilla los procese. Las capas Bukkit/velocidad
-  # anteriores se conservan como respaldo. Spamear o mantener SPACE no
-  # puede iniciar el dash físico del CAMEL.
-  # El primer pasajero es el conductor; el segundo sigue siendo pasajero.
-  camel-normal-jump:
-    enabled: true
-    jump-velocity: 0.55
 
   # Sensación tipo caballo para TODAS las monturas GROUND.
   # Usa STEP_HEIGHT nativo: no busca bloques ni hace raytraces.

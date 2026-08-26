@@ -4,7 +4,7 @@ main: com.mdvcraft.mdvmounts.MDVMountsPlugin
 api-version: '1.21.6'
 author: MDVCRAFT
 description: Controlador de monturas por tags para MythicMobs, sin velocidad propia.
-softdepend: [MythicMobs, ProtocolLib]
+softdepend: [MythicMobs]
 
 commands:
   mdvmounts:

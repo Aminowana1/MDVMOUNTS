@@ -1,16 +1,8 @@
-## 1.1.12 - anti-dash preventivo del camello
-
-Para camellos con `mdv_mount_camel_normal_jump`, MDVMounts puede usar ProtocolLib 5.4.0+ para cancelar `START_RIDING_JUMP` y `STOP_RIDING_JUMP` antes de que el CAMEL vanilla procese la carga/dash. ProtocolLib es `softdepend`; sin él se conservan las capas Bukkit de respaldo, pero el bloqueo preventivo por paquete no está disponible.
-
-# MDVMounts 1.1.9
-
-> 1.1.9 endurece `mdv_mount_camel_normal_jump`: el CAMEL etiquetado nunca usa el dash vanilla; SPACE siempre dispara el salto normal configurado. La supresión es barata y sólo se mantiene para conductores que están usando/recién soltaron SPACE.
-
 # MDVMounts 1.1.8
 
 Controlador ligero de monturas para MDVCRAFT sobre Paper/Purpur 1.21.6+.
 
-La movilidad estable, el almacenamiento por invocador y las habilidades activas se conservan. 1.1.7 añadió salto normal para CAMEL vanilla y trepado tipo araña; 1.1.8 añade protección opcional del jinete contra daño de caída mediante tag.
+La movilidad estable, el almacenamiento por invocador y las habilidades activas se conservan. 1.1.7 añadió trepado tipo araña; 1.1.8 añade protección opcional del jinete contra daño de caída mediante tag.
 
 ## Habilidades de montura por tags
 
@@ -98,28 +90,6 @@ Para `@LivingInCone`, MythicMobs requiere activar explícitamente el pitch del c
 
 Cuando una skill cambia inmediatamente la velocidad de la montura (por ejemplo `lunge`), MDVMounts detecta ese cambio y deja de sobrescribir la velocidad con WASD durante `preserve-skill-velocity-ticks`. Esto evita que un dash se cancele por estar manteniendo W/A/S/D. Las skills que no cambian la velocidad, como proyectiles o sonidos, no activan esta pausa de movimiento.
 
-## Camello vanilla: SPACE como salto normal
-
-Un `CAMEL` real puede conservar sus dos pasajeros y su conducción vanilla sin
-añadir `mdv_mount` ni `mdv_mount_ground`. Basta con:
-
-```yaml
-- addtag{tag=mdv_mount_camel_normal_jump} @self ~onSpawn
-```
-
-La fuerza del salto vive en:
-
-```yaml
-control:
-  camel-normal-jump:
-    enabled: true
-    jump-velocity: 0.55
-```
-
-MDVMounts escucha `PlayerInputEvent` incluso sin crear una sesión manual para
-ese camello. Solo el primer pasajero conduce. En cada transición de SPACE
-desactiva el estado de dash del CAMEL y, al pulsar desde el suelo, conserva X/Z
-vanilla y sustituye únicamente Y por el salto configurado.
 
 ## Trepado de paredes
 
@@ -168,7 +138,7 @@ tags:
 
 ## Rendimiento
 
-No se añade ningún timer global nuevo ni scan de entidades. La protección de caída solo se evalúa cuando ya existe un evento FALL de jugador. El salto del camello usa `PlayerInputEvent`. El trepado reutiliza el tick de movimiento que ya existe y sólo, para una montura marcada como `mdv_mount_climber` que está intentando moverse, consulta 1-2 bloques inmediatamente delante de su hitbox.
+No se añade ningún timer global nuevo ni scan de entidades. La protección de caída solo se evalúa cuando ya existe un evento FALL de jugador. El trepado reutiliza el tick de movimiento que ya existe y sólo, para una montura marcada como `mdv_mount_climber` que está intentando moverse, consulta 1-2 bloques inmediatamente delante de su hitbox.
 
 La integración con MythicMobs usa un bridge ligero: descubre y cachea `BukkitAPIHelper.castSkill(...)` una vez al iniciar. No realiza búsquedas de métodos en cada pulsación.
 
@@ -216,17 +186,3 @@ target/MDVMounts-1.1.8.jar
 ```
 
 
-
-## 1.1.11
-
-- Bloqueo físico del dash del CAMEL durante todo SPACE y 12 ticks tras soltarlo.
-- Corrige el caso de mantener SPACE varios segundos, cargar la barra vanilla y soltar.
-- La supresión ya no depende de que `Camel#isDashing()` llegue a marcarse a tiempo.
-- Se limita únicamente el exceso horizontal; el salto vertical custom se conserva.
-- Mantiene `control.flying-mount-max-water-depth`.
-
-## 1.1.10
-
-- `mdv_mount_camel_normal_jump` ahora usa un bloqueo anti-dash de cuatro capas: input, guard por tick del conductor, `HorseJumpEvent` y clamp horizontal en `EntityMoveEvent`.
-- El salto custom conserva su componente vertical y el camello sigue siendo vanilla con dos pasajeros.
-- Se mantiene `control.flying-mount-max-water-depth`.

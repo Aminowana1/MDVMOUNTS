@@ -1,18 +1,5 @@
 MDVMounts 1.1.7 - cambios
 
-1) CAMEL vanilla con salto normal
-Tag:
-  mdv_mount_camel_normal_jump
-
-No requiere mdv_mount ni mdv_mount_ground.
-Conserva conducción vanilla y 2 pasajeros.
-SPACE aplica un salto vertical configurable y MDVMounts intenta suprimir el dash nativo
-en la transición de pulsar/soltar y nuevamente al tick siguiente.
-
-Config:
-  control.camel-normal-jump.enabled: true
-  control.camel-normal-jump.jump-velocity: 0.55
-
 2) Montura trepadora
 Tag:
   mdv_mount_climber

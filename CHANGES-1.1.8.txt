@@ -22,4 +22,4 @@ Rendimiento:
 - Una lectura de getVehicle + scoreboard tag solo cuando Bukkit ya dispara
   un evento FALL sobre un jugador.
 
-Se conservan íntegramente 1.1.7: salto normal de camello y trepado de paredes.
+Se conserva íntegramente el trepado de paredes de 1.1.7.

@@ -1,12 +1,9 @@
 package com.mdvcraft.mdvmounts.listener;
 
-import io.papermc.paper.event.entity.EntityMoveEvent;
 import com.mdvcraft.mdvmounts.MDVMountsPlugin;
 import com.mdvcraft.mdvmounts.mount.MountManager;
 import com.mdvcraft.mdvmounts.mount.MountSession;
-import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
-import org.bukkit.entity.Camel;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
@@ -16,8 +13,6 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityDismountEvent;
-import org.bukkit.event.entity.EntityMountEvent;
-import org.bukkit.event.entity.HorseJumpEvent;
 import org.bukkit.event.player.PlayerInputEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
@@ -105,77 +100,12 @@ public final class MountListener implements Listener {
         mountManager.handleInput(event.getPlayer(), event.getInput());
     }
 
-    /**
-     * A tagged vanilla camel must never execute its native charged dash.
-     * The plugin supplies the normal vertical jump from PlayerInputEvent, so
-     * cancelling the vanilla horse-jump path removes the race where a long
-     * SPACE hold/release could occasionally win over setDashing(false).
-     */
-    @SuppressWarnings("deprecation")
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onHorseJump(HorseJumpEvent event) {
-        if (!mountManager.shouldCancelVanillaCamelJump(event.getEntity())) {
-            return;
-        }
-
-        event.setCancelled(true);
-    }
-
-    /**
-     * Final hard stop for the native camel dash.
-     *
-     * In 1.1.11 this is active for the whole SPACE-held window and a short
-     * release tail, not only when Camel#isDashing becomes true. That matters
-     * because modern horse/camel jump charging is partly client-assisted.
-     * Y is preserved so the custom normal jump is untouched.
-     *
-     * Event-driven: no entity scan and no extra scheduler.
-     */
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onTaggedCamelMove(EntityMoveEvent event) {
-        if (!(event.getEntity() instanceof Camel camel)) {
-            return;
-        }
-
-        org.bukkit.Location to = event.getTo().clone();
-        if (!mountManager.suppressNativeCamelDashMotion(camel, event.getFrom(), to)) {
-            return;
-        }
-
-        event.setTo(to);
-    }
-
-    /**
-     * Registers the first passenger of a tagged native camel before any jump
-     * packet can be useful to vanilla. This powers the ProtocolLib fast path
-     * without doing Bukkit entity lookups from the network thread.
-     */
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onMount(EntityMountEvent event) {
-        if (!(event.getEntity() instanceof Player player)) {
-            return;
-        }
-
-        mountManager.handleNativeCamelMount(player, event.getMount());
-    }
-
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onDismount(EntityDismountEvent event) {
         if (!(event.getEntity() instanceof Player player)) {
             return;
         }
 
-        // Also clears the rising-edge/packet state used by tagged native
-        // camels, which do not create a normal MDVMounts session.
-        Entity dismounted = event.getDismounted();
-        mountManager.clearInputState(player);
-
-        // If seat #2 becomes seat #1 after the driver leaves, register that
-        // new driver on the next tick (after vanilla updates passengers).
-        if (dismounted instanceof Camel) {
-            Bukkit.getScheduler().runTask(plugin,
-                    () -> mountManager.refreshNativeCamelDriver(dismounted));
-        }
 
         MountSession session = mountManager.getSession(player);
         if (session == null || !event.getDismounted().getUniqueId().equals(session.mount().getUniqueId())) {
