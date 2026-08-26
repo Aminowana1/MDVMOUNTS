@@ -1,4 +1,4 @@
-# MDVMounts 1.1.4
+# MDVMounts 1.1.5
 
 Controlador ligero de monturas para MDVCRAFT sobre Paper/Purpur 1.21.6+.
 
@@ -14,6 +14,9 @@ control:
     enabled: true
     input: SPRINT
     tag-prefix: mdv_mount_skill_
+    use-rider-look-direction: true
+    rider-look-sync-ticks: 10
+    preserve-skill-velocity-ticks: 8
 ```
 
 `SPRINT` corresponde a la acción de sprint de Minecraft (Ctrl suele ser la tecla predeterminada). Si un jugador cambia su tecla de sprint en el cliente, la habilidad sigue funcionando porque Paper informa la acción lógica, no la tecla física.
@@ -66,6 +69,27 @@ La habilidad sólo se ejecuta en la transición `soltado -> pulsado`. Mantener C
 
 Si una montura tiene más de un tag con el prefijo configurado, cada skill distinta se ejecuta una vez en esa pulsación. Los nombres se ordenan para mantener comportamiento determinista.
 
+
+## Apuntado 3D desde la cámara del jinete
+
+Con `use-rider-look-direction: true`, al activar una skill MDVMounts copia yaw y pitch del jinete a la montura durante una ventana corta y también pasa ese ángulo como `origin` al cast de MythicMobs. Así, targeters como:
+
+```yaml
+@Forward{f=20;lockpitch=false}
+```
+
+pueden disparar hacia arriba o hacia abajo según donde mire el jugador montado. El pitch sólo se sincroniza durante `rider-look-sync-ticks`; fuera de esa ventana el controlador conserva el comportamiento normal de rotación horizontal.
+
+Para `@LivingInCone`, MythicMobs requiere activar explícitamente el pitch del cono:
+
+```yaml
+@LivingInCone{a=180;r=4;rot=0;usepitch=true}
+```
+
+## Dash/lunge mientras la montura ya se mueve
+
+Cuando una skill cambia inmediatamente la velocidad de la montura (por ejemplo `lunge`), MDVMounts detecta ese cambio y deja de sobrescribir la velocidad con WASD durante `preserve-skill-velocity-ticks`. Esto evita que un dash se cancele por estar manteniendo W/A/S/D. Las skills que no cambian la velocidad, como proyectiles o sonidos, no activan esta pausa de movimiento.
+
 ## Rendimiento
 
 No se añade ningún timer, búsqueda global ni scan periódico. MDVMounts ya recibe `PlayerInputEvent`; el nuevo módulo sólo revisa los scoreboard tags de la montura cuando el input configurado cambia de suelto a pulsado.
@@ -109,5 +133,5 @@ mvn clean package
 Resultado:
 
 ```text
-target/MDVMounts-1.1.4.jar
+target/MDVMounts-1.1.5.jar
 ```

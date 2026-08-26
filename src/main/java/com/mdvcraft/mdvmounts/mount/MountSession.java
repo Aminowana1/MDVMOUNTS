@@ -3,12 +3,9 @@ package com.mdvcraft.mdvmounts.mount;
 import org.bukkit.Input;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
-import org.bukkit.block.Block;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
-
-import com.mdvcraft.mdvmounts.MDVMountsPlugin;
 
 public final class MountSession {
     private final Player player;
@@ -17,7 +14,7 @@ public final class MountSession {
     private final boolean originalGravity;
     private final Boolean originalAware;
     private final Double originalStepHeightBase;
-    private final MDVMountsPlugin plugin;
+
 
     // Cached native attributes. They are refreshed periodically instead of
     // being queried every server tick.
@@ -27,6 +24,7 @@ public final class MountSession {
 
     // Small runtime state used to avoid redundant Bukkit calls.
     private float lastAppliedYaw = Float.NaN;
+    private float lastAppliedPitch = Float.NaN;
     private float cachedDirectionYaw = Float.NaN;
     private double cachedYawSin;
     private double cachedYawCos = 1.0D;
@@ -34,13 +32,18 @@ public final class MountSession {
     private boolean manualInputActive;
     private int lastImmediateInputMask = Integer.MIN_VALUE;
 
-    public MountSession(Player player, LivingEntity mount, MountType type, MDVMountsPlugin plugin) {
+    // Short-lived windows used only after an active mount skill is fired.
+    // They let MythicMobs aim from the rider camera and preserve velocity
+    // changes such as lunge/dash without changing normal steering.
+    private int skillAimTicksRemaining;
+    private int skillVelocityOverrideTicksRemaining;
+
+    public MountSession(Player player, LivingEntity mount, MountType type) {
         this.player = player;
         this.mount = mount;
         this.type = type;
         this.originalGravity = mount.hasGravity();
         this.originalAware = mount instanceof Mob mob ? mob.isAware() : null;
-        this.plugin = plugin;
 
         AttributeInstance stepHeight = mount.getAttribute(Attribute.STEP_HEIGHT);
         this.originalStepHeightBase = stepHeight == null ? null : stepHeight.getBaseValue();
@@ -92,13 +95,16 @@ public final class MountSession {
         return false;
     }
 
-    public boolean shouldApplyYaw(float yaw) {
-        if (Float.compare(lastAppliedYaw, yaw) == 0) {
+    public boolean shouldApplyRotation(float yaw, float pitch) {
+        if (Float.compare(lastAppliedYaw, yaw) == 0
+                && Float.compare(lastAppliedPitch, pitch) == 0) {
             return false;
         }
         lastAppliedYaw = yaw;
+        lastAppliedPitch = pitch;
         return true;
     }
+
 
     /**
      * Cache sin/cos for horizontal steering. If the rider keeps the same yaw,
@@ -121,7 +127,6 @@ public final class MountSession {
     public double cachedYawCos() {
         return cachedYawCos;
     }
-
     public boolean freeMovementMode() {
         return freeMovementMode;
     }
@@ -130,6 +135,7 @@ public final class MountSession {
         this.freeMovementMode = freeMovementMode;
     }
 
+
     /**
      * Returns true only when the client input state really changed.
      * PlayerInputEvent can be used for immediate response without doing
@@ -137,20 +143,13 @@ public final class MountSession {
      */
     public boolean acceptImmediateInput(Input input) {
         int mask = 0;
-        if (input.isForward())
-            mask |= 1;
-        if (input.isBackward())
-            mask |= 1 << 1;
-        if (input.isLeft())
-            mask |= 1 << 2;
-        if (input.isRight())
-            mask |= 1 << 3;
-        if (input.isJump())
-            mask |= 1 << 4;
-        if (input.isSneak())
-            mask |= 1 << 5;
-        if (input.isSprint())
-            mask |= 1 << 6;
+        if (input.isForward()) mask |= 1;
+        if (input.isBackward()) mask |= 1 << 1;
+        if (input.isLeft()) mask |= 1 << 2;
+        if (input.isRight()) mask |= 1 << 3;
+        if (input.isJump()) mask |= 1 << 4;
+        if (input.isSneak()) mask |= 1 << 5;
+        if (input.isSprint()) mask |= 1 << 6;
 
         if (mask == lastImmediateInputMask) {
             return false;
@@ -160,31 +159,43 @@ public final class MountSession {
         return true;
     }
 
+
+    public void beginSkillAim(int ticks) {
+        skillAimTicksRemaining = Math.max(skillAimTicksRemaining, Math.max(0, ticks));
+    }
+
+    public boolean skillAimActive() {
+        return skillAimTicksRemaining > 0;
+    }
+
+    public void beginSkillVelocityOverride(int ticks) {
+        skillVelocityOverrideTicksRemaining = Math.max(
+                skillVelocityOverrideTicksRemaining,
+                Math.max(0, ticks));
+    }
+
+    public boolean skillVelocityOverrideActive() {
+        return skillVelocityOverrideTicksRemaining > 0;
+    }
+
+    /**
+     * Advances the short skill windows exactly once from the normal mount tick.
+     * PlayerInputEvent can fire more often, so it must not decrement them.
+     */
+    public void tickSkillWindows() {
+        if (skillAimTicksRemaining > 0) {
+            skillAimTicksRemaining--;
+        }
+        if (skillVelocityOverrideTicksRemaining > 0) {
+            skillVelocityOverrideTicksRemaining--;
+        }
+    }
+
     public boolean manualInputActive() {
         return manualInputActive;
     }
 
     public void setManualInputActive(boolean manualInputActive) {
         this.manualInputActive = manualInputActive;
-    }
-
-    public boolean mountIsSubmerged() {
-        int maxWaterDepth = plugin.getConfig().getInt(
-                "control.flying-mount-max-water-depth",
-                4);
-
-        if (maxWaterDepth < 0 || !mount.isInWater()) {
-            return false;
-        }
-
-        Block currentBlock = mount.getLocation().getBlock();
-
-        for (int i = 0; i < maxWaterDepth; i++) {
-            if (!currentBlock.getRelative(0, i, 0).isLiquid()) {
-                return false;
-            }
-        }
-
-        return true;
     }
 }

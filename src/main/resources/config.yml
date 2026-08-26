@@ -1,5 +1,5 @@
 # ==========================================================
-# MDVMounts 1.1.4
+# MDVMounts 1.1.5
 # Controlador ligero de monturas para MDVCRAFT.
 # ==========================================================
 #
@@ -32,10 +32,6 @@ control:
   # La entidad gira con la cámara del jinete.
   rotate-mount-with-rider: true
 
-  # Profundidad máxima que una montura voladora puede alcanzar dentro del agua.
-  # La montura se desmontará al superar esta profundidad.
-  # Usar -1 para deshabilitar esta restricción.
-  flying-mount-max-water-depth: 4
   # Acción usada para abrir el almacenamiento del invocador cuando SU
   # montura está invocada y dentro de la distancia configurada.
   # Opciones: LEFT_CLICK, RIGHT_CLICK, SHIFT_LEFT_CLICK, SHIFT_RIGHT_CLICK
@@ -57,6 +53,20 @@ control:
     enabled: true
     input: SPRINT
     tag-prefix: mdv_mount_skill_
+
+    # Usa yaw + pitch de la cámara del jinete al lanzar la skill.
+    # Esto permite disparar proyectiles hacia arriba/abajo desde monturas
+    # voladoras o acuáticas usando @Forward{lockpitch=false}.
+    use-rider-look-direction: true
+
+    # Durante cuántos ticks se mantiene sincronizado el pitch del caster con
+    # la cámara del jinete. Útil para skills con pulsos/delays cortos.
+    rider-look-sync-ticks: 10
+
+    # Si MythicMobs cambia la velocidad de la montura al castear (lunge/dash),
+    # MDVMounts no pisa esa velocidad con WASD durante esta ventana.
+    # 8 ticks = 0.4 segundos.
+    preserve-skill-velocity-ticks: 8
 
   # Sensación tipo caballo para TODAS las monturas GROUND.
   # Usa STEP_HEIGHT nativo: no busca bloques ni hace raytraces.

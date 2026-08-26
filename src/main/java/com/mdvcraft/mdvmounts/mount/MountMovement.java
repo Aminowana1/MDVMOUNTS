@@ -5,7 +5,6 @@ import com.mdvcraft.mdvmounts.MDVMountsPlugin;
 import org.bukkit.Input;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
-import org.bukkit.block.Block;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
@@ -159,8 +158,9 @@ public final class MountMovement {
 
   public void tick(MountSession session) {
     Player player = session.player();
+    LivingEntity mount = session.mount();
 
-    if (!session.mount().isValid() || !player.isOnline()) {
+    if (!mount.isValid() || !player.isOnline()) {
       return;
     }
 
@@ -168,10 +168,18 @@ public final class MountMovement {
       refreshNativeAttributes(session);
     }
 
-    boolean hasToDismount = applyInput(session, player.getCurrentInput());
-    if (hasToDismount) {
-      plugin.getMountManager().forceDismount(player);
+    // MythicMobs movement mechanics (for example lunge/dash) set their own
+    // velocity. While the short preservation window is active, do not replace
+    // that velocity with the regular WASD controller. Normal steering resumes
+    // automatically when the window ends.
+    if (session.skillVelocityOverrideActive()) {
+      applyRiderRotation(session);
+      session.tickSkillWindows();
+      return;
     }
+
+    applyInput(session, player.getCurrentInput());
+    session.tickSkillWindows();
   }
 
   /**
@@ -191,52 +199,66 @@ public final class MountMovement {
       return;
     }
 
+    if (session.skillVelocityOverrideActive()) {
+      applyRiderRotation(session);
+      return;
+    }
+
     applyInput(session, input);
   }
 
-  private boolean applyInput(MountSession session, Input input) {
+  private void applyInput(MountSession session, Input input) {
     Player player = session.player();
     LivingEntity mount = session.mount();
 
-    if (rotateWithRider && session.shouldApplyYaw(player.getYaw())) {
-      mount.setRotation(player.getYaw(), 0.0F);
-    }
+    applyRiderRotation(session);
 
     switch (session.type()) {
-      case GROUND:
+      case GROUND ->
         applyGroundMovement(session, input, false);
-        break;
 
-      case JUMPER:
+      case JUMPER ->
         applyGroundMovement(session, input, true);
-        break;
 
-      case FLYING:
-        if (session.mountIsSubmerged()) {
-          return true;
-        }
-
+      case FLYING ->
         applyFreeMovement(session, input);
-        break;
 
-      case AQUATIC:
+      case AQUATIC -> {
         if (mount.isInWater()) {
           applyFreeMovement(session, input);
         } else {
           applyGroundMovement(session, input, false);
         }
-        break;
+      }
 
-      case LAVA:
+      case LAVA -> {
         if (mount.isInLava()) {
           applyFreeMovement(session, input);
         } else {
           applyGroundMovement(session, input, false);
         }
-        break;
+      }
+    }
+  }
+
+  private void applyRiderRotation(MountSession session) {
+    // A skill-aim window is explicit and should work even if normal
+    // rotate-mount-with-rider is disabled. Outside that window we preserve
+    // the existing rotation setting exactly.
+    if (!rotateWithRider && !session.skillAimActive()) {
+      return;
     }
 
-    return false;
+    Player player = session.player();
+    LivingEntity mount = session.mount();
+
+    // Normal movement keeps the historic yaw-only behaviour. During the short
+    // skill-aim window we additionally mirror rider pitch so MythicMobs
+    // targeters such as @Forward{lockpitch=false} use the rider camera.
+    float pitch = session.skillAimActive() ? player.getPitch() : 0.0F;
+    if (session.shouldApplyRotation(player.getYaw(), pitch)) {
+      mount.setRotation(player.getYaw(), pitch);
+    }
   }
 
   private void applyGroundMovement(
@@ -403,7 +425,7 @@ public final class MountMovement {
     double cos = session.cachedYawCos();
 
     double x = (-sin * forwardInput + cos * strafeInput) * speed;
-    double z = (cos * forwardInput + sin * strafeInput) * speed;
+    double z = ( cos * forwardInput + sin * strafeInput) * speed;
 
     return new Vector(x, 0.0D, z);
   }
@@ -507,5 +529,4 @@ public final class MountMovement {
         ? DEFAULT_JUMP_STRENGTH
         : Math.max(0.0D, attribute.getValue());
   }
-
 }

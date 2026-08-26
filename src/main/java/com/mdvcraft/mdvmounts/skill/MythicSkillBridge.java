@@ -34,10 +34,12 @@ public final class MythicSkillBridge {
         return available;
     }
 
-    public boolean cast(Entity caster, Entity trigger, String skillName) {
+    public boolean cast(Entity caster, Entity trigger, String skillName, Location origin) {
         if (!available || caster == null || skillName == null || skillName.isBlank()) {
             return false;
         }
+
+        Location effectiveOrigin = origin == null ? caster.getLocation() : origin;
 
         try {
             if (castWithTrigger != null) {
@@ -46,7 +48,7 @@ public final class MythicSkillBridge {
                         caster,
                         skillName,
                         trigger,
-                        caster.getLocation(),
+                        effectiveOrigin,
                         Collections.emptyList(),
                         Collections.emptyList(),
                         1.0F

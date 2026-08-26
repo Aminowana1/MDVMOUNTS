@@ -4,8 +4,10 @@ import com.mdvcraft.mdvmounts.MDVMountsPlugin;
 import com.mdvcraft.mdvmounts.mount.MountManager;
 import com.mdvcraft.mdvmounts.mount.MountSession;
 import org.bukkit.Input;
+import org.bukkit.Location;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -32,6 +34,9 @@ public final class MountSkillManager {
     private boolean enabled;
     private MountSkillInput activationInput;
     private String tagPrefix;
+    private boolean useRiderLookDirection;
+    private int riderLookSyncTicks;
+    private int preserveSkillVelocityTicks;
 
     public MountSkillManager(MDVMountsPlugin plugin, MountManager mountManager) {
         this.plugin = plugin;
@@ -52,6 +57,13 @@ public final class MountSkillManager {
         } else {
             tagPrefix = tagPrefix.trim();
         }
+
+        useRiderLookDirection = plugin.getConfig().getBoolean(
+                "control.mount-skills.use-rider-look-direction", true);
+        riderLookSyncTicks = Math.max(0, plugin.getConfig().getInt(
+                "control.mount-skills.rider-look-sync-ticks", 10));
+        preserveSkillVelocityTicks = Math.max(0, plugin.getConfig().getInt(
+                "control.mount-skills.preserve-skill-velocity-ticks", 8));
 
         pressedStates.clear();
     }
@@ -97,9 +109,39 @@ public final class MountSkillManager {
             return;
         }
 
-        for (String skillName : skillNames) {
-            mythicBridge.cast(mount, player, skillName);
+        Location castOrigin = mount.getLocation().clone();
+        if (useRiderLookDirection) {
+            castOrigin.setYaw(player.getYaw());
+            castOrigin.setPitch(player.getPitch());
+
+            // @Forward and similar caster-facing targeters resolve immediately
+            // from the mount, so mirror rider look before starting the cast.
+            // MountMovement keeps this pitch synchronized only for the short
+            // configured window, then automatically returns to yaw-only.
+            session.beginSkillAim(riderLookSyncTicks);
+            mount.setRotation(player.getYaw(), player.getPitch());
         }
+
+        for (String skillName : skillNames) {
+            Vector before = mount.getVelocity().clone();
+            mythicBridge.cast(mount, player, skillName, castOrigin);
+            Vector after = mount.getVelocity();
+
+            // If MythicMobs changed the mount's velocity synchronously (lunge,
+            // recoil, dash, etc.), preserve it briefly. Without this, the
+            // regular WASD controller would replace the dash on the next tick
+            // whenever the rider was already moving.
+            if (preserveSkillVelocityTicks > 0 && velocityChanged(before, after)) {
+                session.beginSkillVelocityOverride(preserveSkillVelocityTicks);
+            }
+        }
+    }
+
+    private boolean velocityChanged(Vector before, Vector after) {
+        if (before == null || after == null) {
+            return false;
+        }
+        return before.distanceSquared(after) > 1.0E-6D;
     }
 
     public void clear(Player player) {

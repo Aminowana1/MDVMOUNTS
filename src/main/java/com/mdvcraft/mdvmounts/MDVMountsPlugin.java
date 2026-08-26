@@ -39,7 +39,7 @@ public final class MDVMountsPlugin extends JavaPlugin {
         }
 
         mountManager.start();
-        getLogger().info("MDVMounts 1.1.4 habilitado. Movilidad estable + almacenamiento + habilidades por tags.");
+        getLogger().info("MDVMounts 1.1.5 habilitado. Habilidades con apuntado del jinete + dash preservado.");
     }
 
     @Override
@@ -64,9 +64,5 @@ public final class MDVMountsPlugin extends JavaPlugin {
         mountManager.reloadSettings();
         storageManager.reloadSettings();
         mountSkillManager.reloadSettings();
-    }
-
-    public MountManager getMountManager() {
-        return mountManager;
     }
 }
