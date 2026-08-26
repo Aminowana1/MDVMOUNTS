@@ -1,82 +1,102 @@
-# MDVMounts 1.1.3
+# MDVMounts 1.1.4
 
 Controlador ligero de monturas para MDVCRAFT sobre Paper/Purpur 1.21.6+.
 
-La movilidad estable de 1.0.6 no se modifica. Esta versión ajusta únicamente el almacenamiento por invocador.
+La movilidad estable y el almacenamiento por invocador de 1.1.3 se conservan. Esta versión añade habilidades activables desde el input del jinete mediante scoreboard tags.
 
-## Almacenamiento por invocador
+## Habilidades de montura por tags
 
-- Cada ItemStack físico mantiene su propio contenido mediante `DataComponentTypes.CONTAINER` (`minecraft:container`).
-- Dos silbatos visualmente idénticos conservan inventarios separados.
-- Cada invocación exitosa renueva el UUID de enlace entre ESE silbato físico y su montura, evitando identidades duplicadas.
-- Si otro jugador roba o recoge el mismo silbato, también hereda su contenido.
-- Sólo se abre si la montura exacta ligada a ese silbato está invocada y dentro de `interaction-distance`.
-- Un almacenamiento tiene single-viewer lock: una sola persona puede verlo a la vez.
-- Si la montura muere, despawnea, es removida o sale del mundo, el menú se guarda y se cierra.
-- No usa SQLite.
-
-## 1.1.3 - controles configurables
-
-La acción para abrir las alforjas se elige en `config.yml`:
+La configuración general vive en `config.yml`:
 
 ```yaml
 control:
-  storage-open-interaction: LEFT_CLICK
+  mount-skills:
+    enabled: true
+    input: SPRINT
+    tag-prefix: mdv_mount_skill_
 ```
 
-Valores admitidos:
+`SPRINT` corresponde a la acción de sprint de Minecraft (Ctrl suele ser la tecla predeterminada). Si un jugador cambia su tecla de sprint en el cliente, la habilidad sigue funcionando porque Paper informa la acción lógica, no la tecla física.
 
-- `LEFT_CLICK`
-- `RIGHT_CLICK`
-- `SHIFT_LEFT_CLICK`
-- `SHIFT_RIGHT_CLICK`
+Inputs admitidos:
 
-`LEFT_CLICK` mantiene el comportamiento de 1.1.2. Un click derecho que no abra realmente el almacenamiento sigue disponible para Crucible/MythicMobs, de modo que la invocación normal no se rompe.
+- `SPRINT` (`CTRL` / `CONTROL` también se aceptan)
+- `JUMP` (`SPACE`)
+- `SNEAK` (`SHIFT`)
+- `FORWARD` (`W`)
+- `BACKWARD` (`S`)
+- `LEFT` (`A`)
+- `RIGHT` (`D`)
 
-## 1.1.3 - tooltip limpio
-
-El contenido continúa guardándose en `minecraft:container`, pero MDVMounts añade `CONTAINER` a los componentes ocultos del `TOOLTIP_DISPLAY`. Así Minecraft deja de mostrar el listado estilo shulker sobre el lore del silbato, sin ocultar el nombre ni el lore personalizado.
-
-Los silbatos ya existentes se corrigen al entrar el jugador o al ejecutar `/mdvmounts reload`. Los nuevos quedan corregidos automáticamente al enlazarse/guardar contenido.
-
-## Configuración separada
-
-La movilidad y los controles generales permanecen en `config.yml`. Los perfiles de inventario viven en:
-
-```text
-plugins/MDVMounts/storage.yml
-```
-
-Ejemplo:
+Para asignar una skill a una montura, se añade un scoreboard tag cuyo sufijo sea exactamente el nombre de la skill MythicMobs:
 
 ```yaml
-profiles:
-  toro_carga:
-    enabled: true
-    slots: 20
-    title: '&6Carga del Toro'
-    interaction-distance: 3.0
-
-    invoker:
-      material: SADDLE
-      display-name: '&e&lSilbato de Toro de Carga'
-
-    mount:
-      required-tags:
-        - mdv_storage_toro_carga
+TORO_CARGA:
+  # ...
+  Skills:
+  - addtag{tag=mdv_mount} @self ~onSpawn
+  - addtag{tag=mdv_mount_ground} @self ~onSpawn
+  - addtag{tag=mdv_mount_skill_TORO_EMBESTIDA} @self ~onSpawn
 ```
 
-`slots` admite de 1 a 54 espacios reales.
+Al pulsar `SPRINT` mientras se conduce ese toro, MDVMounts ejecuta:
 
-## Autoactualización
+```text
+TORO_EMBESTIDA
+```
 
-`config.yml` y `storage.yml` se autoactualizan al iniciar y con `/mdvmounts reload`: las claves nuevas del JAR se agregan sin reemplazar valores existentes.
+La montura es el caster de MythicMobs y el jugador que la conduce se pasa como `@trigger` cuando la versión de MythicMobs ofrece ese overload de la API.
 
-Las instalaciones antiguas que todavía tengan `storage:` dentro de `config.yml` se migran automáticamente a `storage.yml`.
+Ejemplo de skill:
+
+```yaml
+TORO_EMBESTIDA:
+  Skills:
+  - sound{s=entity.ravager.roar;v=1;p=1} @self
+  - lunge{velocity=1.5;velocityY=0.1} @self
+```
+
+Los cooldowns, costes, condiciones y efectos siguen definiéndose en MythicMobs. MDVMounts únicamente detecta la pulsación y dispara la skill.
+
+### Sin spam al mantener la tecla
+
+La habilidad sólo se ejecuta en la transición `soltado -> pulsado`. Mantener Ctrl/Sprint apretado no vuelve a lanzar la skill cada tick. Para volver a activarla hay que soltar y pulsar otra vez.
+
+### Más de un tag
+
+Si una montura tiene más de un tag con el prefijo configurado, cada skill distinta se ejecuta una vez en esa pulsación. Los nombres se ordenan para mantener comportamiento determinista.
 
 ## Rendimiento
 
-No se añaden timers ni scans globales para este cambio. La migración visual del tooltip sólo hace un recorrido del inventario del jugador al entrar o al recargar la configuración. Las búsquedas de montura siguen ocurriendo sólo al usar un invocador configurado y durante la pequeña ventana de enlace posterior a una invocación.
+No se añade ningún timer, búsqueda global ni scan periódico. MDVMounts ya recibe `PlayerInputEvent`; el nuevo módulo sólo revisa los scoreboard tags de la montura cuando el input configurado cambia de suelto a pulsado.
+
+La integración con MythicMobs usa un bridge ligero: descubre y cachea `BukkitAPIHelper.castSkill(...)` una vez al iniciar. No realiza búsquedas de métodos en cada pulsación.
+
+## Almacenamiento por invocador
+
+Se mantiene el comportamiento de 1.1.3:
+
+- cada ItemStack físico conserva su propio `minecraft:container`;
+- single-viewer lock;
+- cierre al morir/despawnear/remover la montura;
+- tooltip del contenedor oculto;
+- interacción del almacenamiento configurable;
+- `storage.yml` separado;
+- sin SQLite.
+
+## Autoactualización
+
+`config.yml` y `storage.yml` se autoactualizan al iniciar y con `/mdvmounts reload`. Las claves nuevas incluidas en el JAR se agregan sin reemplazar valores existentes.
+
+Por eso una instalación 1.1.3 recibirá automáticamente:
+
+```yaml
+control:
+  mount-skills:
+    enabled: true
+    input: SPRINT
+    tag-prefix: mdv_mount_skill_
+```
 
 ## Compilar
 
@@ -89,5 +109,5 @@ mvn clean package
 Resultado:
 
 ```text
-target/MDVMounts-1.1.3.jar
+target/MDVMounts-1.1.4.jar
 ```
