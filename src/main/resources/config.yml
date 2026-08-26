@@ -1,5 +1,5 @@
 # ==========================================================
-# MDVMounts 1.1.7
+# MDVMounts 1.1.9
 # Controlador ligero de monturas para MDVCRAFT.
 # ==========================================================
 #
@@ -34,6 +34,12 @@ tags:
   # Tag independiente para CAMEL vanilla. No requiere mdv_mount:
   # conserva conducción y dos pasajeros vanilla, pero SPACE hace salto normal.
   camel-normal-jump: mdv_mount_camel_normal_jump
+
+  # Protección de caída para el/los pasajeros.
+  # Solo se consulta cuando Bukkit ya está procesando daño FALL de un jugador:
+  # no crea timers, scans ni trabajo por tick. La montura conserva su propio
+  # daño de caída normal.
+  rider-fall-protection: mdv_mount_rider_fall_protection
 
 control:
   # Pausa la IA/pathfinding vanilla mientras el jugador conduce una montura.
@@ -90,6 +96,7 @@ control:
 
   # CAMEL vanilla con salto normal en lugar del dash.
   # Solo actúa en camellos con el tag tags.camel-normal-jump.
+  # El dash vanilla se cancela de forma estricta incluso al mantener SPACE.
   # El primer pasajero es el conductor; el segundo sigue siendo pasajero.
   camel-normal-jump:
     enabled: true

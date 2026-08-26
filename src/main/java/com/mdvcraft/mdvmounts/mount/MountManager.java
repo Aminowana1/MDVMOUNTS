@@ -34,13 +34,22 @@ public final class MountManager {
     private String jumperTag;
     private String climberTag;
     private String camelNormalJumpTag;
+    private String riderFallProtectionTag;
 
     private boolean camelNormalJumpEnabled;
     private double camelNormalJumpVelocity;
 
     // PlayerInputEvent can also fire when W/A/S/D changes while SPACE remains
-    // held. Remember the rising edge so a native camel jumps only once.
+    // held. Remember the rising edge so a tagged native camel jumps only once.
     private final Set<UUID> nativeCamelJumpHeld = new HashSet<>();
+
+    // Vanilla camels can apply their dash a little later than PlayerInputEvent.
+    // Keep a tiny guard only for players currently holding SPACE and for a few
+    // ticks after release. This is NOT a global entity scan: it contains only
+    // active tagged-camel drivers that have actually used the jump key.
+    private static final int CAMEL_DASH_RELEASE_GUARD_TICKS = 8;
+    private final Map<UUID, UUID> nativeCamelDashGuardMounts = new HashMap<>();
+    private final Map<UUID, Integer> nativeCamelDashReleaseTicks = new HashMap<>();
 
     public MountManager(MDVMountsPlugin plugin) {
         this.plugin = plugin;
@@ -65,6 +74,9 @@ public final class MountManager {
             forceDismount(session.player());
         }
         sessions.clear();
+        nativeCamelJumpHeld.clear();
+        nativeCamelDashGuardMounts.clear();
+        nativeCamelDashReleaseTicks.clear();
     }
 
     public void reloadSettings() {
@@ -79,6 +91,9 @@ public final class MountManager {
         camelNormalJumpTag = plugin.getConfig().getString(
                 "tags.camel-normal-jump",
                 "mdv_mount_camel_normal_jump");
+        riderFallProtectionTag = plugin.getConfig().getString(
+                "tags.rider-fall-protection",
+                "mdv_mount_rider_fall_protection");
 
         camelNormalJumpEnabled = plugin.getConfig().getBoolean(
                 "control.camel-normal-jump.enabled",
@@ -128,6 +143,18 @@ public final class MountManager {
 
     public MountSession getSession(Player player) {
         return sessions.get(player.getUniqueId());
+    }
+
+    /**
+     * Event-driven fall protection for riders. No scheduler, nearby-entity
+     * lookup or per-tick scan is involved: the scoreboard tag is checked only
+     * when Bukkit is already processing fall damage for a mounted player.
+     */
+    public boolean protectsRiderFromFall(Entity vehicle) {
+        return vehicle != null
+                && riderFallProtectionTag != null
+                && !riderFallProtectionTag.isBlank()
+                && vehicle.getScoreboardTags().contains(riderFallProtectionTag);
     }
 
     /**
@@ -215,43 +242,72 @@ public final class MountManager {
     }
 
     public void clearInputState(Player player) {
-        nativeCamelJumpHeld.remove(player.getUniqueId());
+        UUID playerId = player.getUniqueId();
+        nativeCamelJumpHeld.remove(playerId);
+        nativeCamelDashGuardMounts.remove(playerId);
+        nativeCamelDashReleaseTicks.remove(playerId);
+    }
+
+    /**
+     * Returns true when vanilla horse/camel jump handling must be cancelled for
+     * a tagged native camel. The actual normal jump is injected from
+     * PlayerInputEvent, so allowing the vanilla HorseJumpEvent would re-enable
+     * the camel dash on some press/release timings.
+     */
+    public boolean shouldCancelVanillaCamelJump(Entity entity) {
+        if (!camelNormalJumpEnabled
+                || !(entity instanceof Camel camel)
+                || !camel.getScoreboardTags().contains(camelNormalJumpTag)) {
+            return false;
+        }
+
+        camel.setDashing(false);
+        return true;
     }
 
     /**
      * Special handling for a real vanilla Camel that intentionally does NOT
      * use mdv_mount/mdv_mount_ground. Only the first passenger drives it.
      *
-     * SPACE becomes a small normal vertical jump and the native camel dash is
-     * suppressed on both the press and release transitions.
+     * SPACE becomes a small normal vertical jump. The vanilla dash is blocked
+     * in three layers:
+     * 1) immediately on every PlayerInputEvent,
+     * 2) every tick while SPACE is held + a short release window,
+     * 3) HorseJumpEvent is cancelled by MountListener for tagged camels.
+     *
+     * The repeating guard is extremely small: it only iterates players that
+     * are actively using SPACE on a tagged camel; there is no world/entity scan.
      */
     private void handleNativeCamelInput(Player player, Input input) {
         UUID playerId = player.getUniqueId();
         Entity vehicle = player.getVehicle();
 
-        if (!camelNormalJumpEnabled
-                || !(vehicle instanceof Camel camel)
-                || !camel.getScoreboardTags().contains(camelNormalJumpTag)
-                || camel.getPassengers().isEmpty()
-                || !camel.getPassengers().getFirst().getUniqueId().equals(playerId)) {
+        if (!isTaggedNativeCamelDriver(player, vehicle)) {
             nativeCamelJumpHeld.remove(playerId);
+            nativeCamelDashGuardMounts.remove(playerId);
+            nativeCamelDashReleaseTicks.remove(playerId);
             return;
         }
 
+        Camel camel = (Camel) vehicle;
         boolean jumpPressed = input.isJump();
         boolean wasHeld = nativeCamelJumpHeld.contains(playerId);
 
+        nativeCamelDashGuardMounts.put(playerId, camel.getUniqueId());
+        camel.setDashing(false);
+
         if (jumpPressed) {
             nativeCamelJumpHeld.add(playerId);
+            // Keep this armed as long as SPACE remains held.
+            nativeCamelDashReleaseTicks.put(playerId, CAMEL_DASH_RELEASE_GUARD_TICKS);
         } else {
             nativeCamelJumpHeld.remove(playerId);
+            // Vanilla may process the release after the input event. Keep
+            // suppressing for a few ticks so a late dash cannot slip through.
+            nativeCamelDashReleaseTicks.put(playerId, CAMEL_DASH_RELEASE_GUARD_TICKS);
         }
 
-        // Kill any dash state immediately. The same guard is repeated next
-        // tick because vanilla camel movement is processed after client input.
-        camel.setDashing(false);
-        suppressCamelDashNextTick(player, camel);
-
+        // Rising edge only: holding SPACE never repeats normal jumps in mid-air.
         if (!jumpPressed || wasHeld || !camel.isOnGround()) {
             return;
         }
@@ -261,23 +317,69 @@ public final class MountManager {
         camel.setVelocity(velocity);
     }
 
-    private void suppressCamelDashNextTick(Player player, Camel camel) {
-        UUID playerId = player.getUniqueId();
-        UUID camelId = camel.getUniqueId();
+    private boolean isTaggedNativeCamelDriver(Player player, Entity vehicle) {
+        if (!camelNormalJumpEnabled
+                || !(vehicle instanceof Camel camel)
+                || !camel.getScoreboardTags().contains(camelNormalJumpTag)
+                || camel.getPassengers().isEmpty()) {
+            return false;
+        }
 
-        Bukkit.getScheduler().runTask(plugin, () -> {
-            if (!player.isOnline()
-                    || !camel.isValid()
-                    || camel.isDead()
-                    || player.getVehicle() == null
-                    || !player.getVehicle().getUniqueId().equals(camelId)
-                    || !camel.getScoreboardTags().contains(camelNormalJumpTag)
-                    || camel.getPassengers().isEmpty()
-                    || !camel.getPassengers().getFirst().getUniqueId().equals(playerId)) {
-                return;
+        return camel.getPassengers().getFirst().getUniqueId().equals(player.getUniqueId());
+    }
+
+    /**
+     * Hard guard against delayed vanilla camel dash application.
+     *
+     * Cost: O(number of tagged camel drivers currently holding/recently
+     * releasing SPACE). Normally this is zero, and even with several players
+     * it is only a UUID lookup + vehicle/tag check + setDashing(false).
+     */
+    private void tickNativeCamelDashGuards() {
+        if (nativeCamelDashGuardMounts.isEmpty()) {
+            return;
+        }
+
+        Iterator<Map.Entry<UUID, UUID>> iterator = nativeCamelDashGuardMounts.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<UUID, UUID> entry = iterator.next();
+            UUID playerId = entry.getKey();
+            UUID camelId = entry.getValue();
+
+            Player player = Bukkit.getPlayer(playerId);
+            Entity vehicle = player == null ? null : player.getVehicle();
+
+            if (player == null
+                    || !player.isOnline()
+                    || !isTaggedNativeCamelDriver(player, vehicle)
+                    || !vehicle.getUniqueId().equals(camelId)) {
+                iterator.remove();
+                nativeCamelJumpHeld.remove(playerId);
+                nativeCamelDashReleaseTicks.remove(playerId);
+                continue;
             }
+
+            Camel camel = (Camel) vehicle;
+            boolean held = nativeCamelJumpHeld.contains(playerId);
+            int releaseTicks = nativeCamelDashReleaseTicks.getOrDefault(playerId, 0);
+
+            if (!held && releaseTicks <= 0) {
+                iterator.remove();
+                nativeCamelDashReleaseTicks.remove(playerId);
+                continue;
+            }
+
+            // Do this every tick while SPACE is held and during the short
+            // release guard. This prevents the native dash state from surviving
+            // any ordering difference between client input and camel ticking.
             camel.setDashing(false);
-        });
+
+            if (held) {
+                nativeCamelDashReleaseTicks.put(playerId, CAMEL_DASH_RELEASE_GUARD_TICKS);
+            } else {
+                nativeCamelDashReleaseTicks.put(playerId, releaseTicks - 1);
+            }
+        }
     }
 
     public int activeCount() {
@@ -293,6 +395,10 @@ public final class MountManager {
     }
 
     private void tick() {
+        // Native tagged camels do not create a normal MDVMounts session, so
+        // their anti-dash guard must run before the sessions-empty fast return.
+        tickNativeCamelDashGuards();
+
         if (sessions.isEmpty()) {
             return;
         }

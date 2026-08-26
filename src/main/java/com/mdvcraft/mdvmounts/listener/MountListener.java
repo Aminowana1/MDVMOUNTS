@@ -10,8 +10,10 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityDismountEvent;
+import org.bukkit.event.entity.HorseJumpEvent;
 import org.bukkit.event.player.PlayerInputEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
@@ -99,6 +101,22 @@ public final class MountListener implements Listener {
         mountManager.handleInput(event.getPlayer(), event.getInput());
     }
 
+    /**
+     * A tagged vanilla camel must never execute its native charged dash.
+     * The plugin supplies the normal vertical jump from PlayerInputEvent, so
+     * cancelling the vanilla horse-jump path removes the race where a long
+     * SPACE hold/release could occasionally win over setDashing(false).
+     */
+    @SuppressWarnings("deprecation")
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onHorseJump(HorseJumpEvent event) {
+        if (!mountManager.shouldCancelVanillaCamelJump(event.getEntity())) {
+            return;
+        }
+
+        event.setCancelled(true);
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onDismount(EntityDismountEvent event) {
         if (!(event.getEntity() instanceof Player player)) {
@@ -115,6 +133,28 @@ public final class MountListener implements Listener {
         }
 
         mountManager.releaseAfterNaturalDismount(player);
+    }
+
+    /**
+     * Some mounts protect their riders from fall damage. This is intentionally
+     * event-driven: there is no repeating task and no entity scan. The mount
+     * still receives its own fall damage normally; only the player's FALL
+     * event is cancelled. This also works for a second passenger on a native
+     * camel because both players report the camel as their vehicle.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onRiderFallDamage(EntityDamageEvent event) {
+        if (event.getCause() != EntityDamageEvent.DamageCause.FALL
+                || !(event.getEntity() instanceof Player player)) {
+            return;
+        }
+
+        Entity vehicle = player.getVehicle();
+        if (!mountManager.protectsRiderFromFall(vehicle)) {
+            return;
+        }
+
+        event.setCancelled(true);
     }
 
     @EventHandler

@@ -1,0 +1,12 @@
+MDVMounts 1.1.9
+================
+
+- Corrige definitivamente el dash vanilla de CAMEL con tag
+  mdv_mount_camel_normal_jump.
+- SPACE siempre usa el salto vertical configurado por MDVMounts.
+- Se cancela HorseJumpEvent para el camello etiquetado, evitando que la
+  ruta vanilla de salto/dash compita con PlayerInputEvent.
+- Añade una guardia mínima por tick SOLO mientras un conductor etiquetado
+  mantiene SPACE o durante 8 ticks tras soltarlo. No hay scans de mundos,
+  nearbyEntities ni raytraces.
+- La conducción vanilla y el segundo pasajero del CAMEL se conservan.

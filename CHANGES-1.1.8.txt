@@ -1,0 +1,25 @@
+MDVMounts 1.1.8 - cambios
+
+1) Protección opcional del jinete contra daño de caída
+Tag:
+  mdv_mount_rider_fall_protection
+
+Mientras un Player permanezca montado sobre una entidad con ese tag, su evento
+DamageCause.FALL se cancela. La montura NO se vuelve inmune: conserva su propio
+daño de caída y sus atributos vanilla/MythicMobs.
+
+Funciona también para el segundo pasajero de un CAMEL vanilla.
+
+Config:
+  tags.rider-fall-protection: mdv_mount_rider_fall_protection
+
+Rendimiento:
+- Sin scheduler nuevo.
+- Sin scans de entidades.
+- Sin getNearbyEntities.
+- Sin raytrace.
+- Sin trabajo por tick.
+- Una lectura de getVehicle + scoreboard tag solo cuando Bukkit ya dispara
+  un evento FALL sobre un jugador.
+
+Se conservan íntegramente 1.1.7: salto normal de camello y trepado de paredes.

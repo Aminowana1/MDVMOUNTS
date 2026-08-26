@@ -1,8 +1,12 @@
-# MDVMounts 1.1.7
+# MDVMounts 1.1.9
+
+> 1.1.9 endurece `mdv_mount_camel_normal_jump`: el CAMEL etiquetado nunca usa el dash vanilla; SPACE siempre dispara el salto normal configurado. La supresión es barata y sólo se mantiene para conductores que están usando/recién soltaron SPACE.
+
+# MDVMounts 1.1.8
 
 Controlador ligero de monturas para MDVCRAFT sobre Paper/Purpur 1.21.6+.
 
-La movilidad estable, el almacenamiento por invocador y las habilidades activas se conservan. 1.1.7 añade salto normal para CAMEL vanilla mediante tag y trepado tipo araña para monturas GROUND.
+La movilidad estable, el almacenamiento por invocador y las habilidades activas se conservan. 1.1.7 añadió salto normal para CAMEL vanilla y trepado tipo araña; 1.1.8 añade protección opcional del jinete contra daño de caída mediante tag.
 
 ## Habilidades de montura por tags
 
@@ -139,9 +143,28 @@ control:
 No hay raytraces ni búsquedas de entidades. Solo el climber que se está moviendo
 hace una o dos comprobaciones `Block#isPassable` en la dirección solicitada.
 
+## Protección de caída del jinete
+
+Añade este tag a cualquier montura que deba proteger a sus pasajeros del daño de caída:
+
+```yaml
+- addtag{tag=mdv_mount_rider_fall_protection} @self ~onSpawn
+```
+
+Mientras el jugador siga montado sobre esa entidad, MDVMounts cancela únicamente su evento `FALL`. La montura mantiene intacto su propio daño de caída y puede seguir usando `GENERIC_FALL_DAMAGE_MULTIPLIER` para reducirlo o aumentarlo.
+
+El sistema también cubre al segundo pasajero de un CAMEL vanilla. Es completamente event-driven: no añade timers, tareas por tick, raytraces ni búsquedas de entidades.
+
+La clave del tag puede cambiarse en `config.yml`:
+
+```yaml
+tags:
+  rider-fall-protection: mdv_mount_rider_fall_protection
+```
+
 ## Rendimiento
 
-No se añade ningún timer global nuevo ni scan de entidades. El salto del camello usa `PlayerInputEvent`. El trepado reutiliza el tick de movimiento que ya existe y sólo, para una montura marcada como `mdv_mount_climber` que está intentando moverse, consulta 1-2 bloques inmediatamente delante de su hitbox.
+No se añade ningún timer global nuevo ni scan de entidades. La protección de caída solo se evalúa cuando ya existe un evento FALL de jugador. El salto del camello usa `PlayerInputEvent`. El trepado reutiliza el tick de movimiento que ya existe y sólo, para una montura marcada como `mdv_mount_climber` que está intentando moverse, consulta 1-2 bloques inmediatamente delante de su hitbox.
 
 La integración con MythicMobs usa un bridge ligero: descubre y cachea `BukkitAPIHelper.castSkill(...)` una vez al iniciar. No realiza búsquedas de métodos en cada pulsación.
 
@@ -185,5 +208,5 @@ mvn clean package
 Resultado:
 
 ```text
-target/MDVMounts-1.1.7.jar
+target/MDVMounts-1.1.8.jar
 ```
