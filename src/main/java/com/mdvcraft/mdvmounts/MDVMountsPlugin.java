@@ -56,4 +56,8 @@ public final class MDVMountsPlugin extends JavaPlugin {
         mountManager.reloadSettings();
         storageManager.reloadSettings();
     }
+
+    public MountManager getMountManager() {
+        return mountManager;
+    }
 }

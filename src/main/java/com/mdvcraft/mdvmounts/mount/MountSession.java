@@ -3,9 +3,12 @@ package com.mdvcraft.mdvmounts.mount;
 import org.bukkit.Input;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.block.Block;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
+
+import com.mdvcraft.mdvmounts.MDVMountsPlugin;
 
 public final class MountSession {
     private final Player player;
@@ -14,7 +17,7 @@ public final class MountSession {
     private final boolean originalGravity;
     private final Boolean originalAware;
     private final Double originalStepHeightBase;
-
+    private final MDVMountsPlugin plugin;
 
     // Cached native attributes. They are refreshed periodically instead of
     // being queried every server tick.
@@ -31,12 +34,13 @@ public final class MountSession {
     private boolean manualInputActive;
     private int lastImmediateInputMask = Integer.MIN_VALUE;
 
-    public MountSession(Player player, LivingEntity mount, MountType type) {
+    public MountSession(Player player, LivingEntity mount, MountType type, MDVMountsPlugin plugin) {
         this.player = player;
         this.mount = mount;
         this.type = type;
         this.originalGravity = mount.hasGravity();
         this.originalAware = mount instanceof Mob mob ? mob.isAware() : null;
+        this.plugin = plugin;
 
         AttributeInstance stepHeight = mount.getAttribute(Attribute.STEP_HEIGHT);
         this.originalStepHeightBase = stepHeight == null ? null : stepHeight.getBaseValue();
@@ -96,7 +100,6 @@ public final class MountSession {
         return true;
     }
 
-
     /**
      * Cache sin/cos for horizontal steering. If the rider keeps the same yaw,
      * manual mounts avoid two trigonometric calculations every server tick.
@@ -118,6 +121,7 @@ public final class MountSession {
     public double cachedYawCos() {
         return cachedYawCos;
     }
+
     public boolean freeMovementMode() {
         return freeMovementMode;
     }
@@ -126,7 +130,6 @@ public final class MountSession {
         this.freeMovementMode = freeMovementMode;
     }
 
-
     /**
      * Returns true only when the client input state really changed.
      * PlayerInputEvent can be used for immediate response without doing
@@ -134,13 +137,20 @@ public final class MountSession {
      */
     public boolean acceptImmediateInput(Input input) {
         int mask = 0;
-        if (input.isForward()) mask |= 1;
-        if (input.isBackward()) mask |= 1 << 1;
-        if (input.isLeft()) mask |= 1 << 2;
-        if (input.isRight()) mask |= 1 << 3;
-        if (input.isJump()) mask |= 1 << 4;
-        if (input.isSneak()) mask |= 1 << 5;
-        if (input.isSprint()) mask |= 1 << 6;
+        if (input.isForward())
+            mask |= 1;
+        if (input.isBackward())
+            mask |= 1 << 1;
+        if (input.isLeft())
+            mask |= 1 << 2;
+        if (input.isRight())
+            mask |= 1 << 3;
+        if (input.isJump())
+            mask |= 1 << 4;
+        if (input.isSneak())
+            mask |= 1 << 5;
+        if (input.isSprint())
+            mask |= 1 << 6;
 
         if (mask == lastImmediateInputMask) {
             return false;
@@ -156,5 +166,25 @@ public final class MountSession {
 
     public void setManualInputActive(boolean manualInputActive) {
         this.manualInputActive = manualInputActive;
+    }
+
+    public boolean mountIsSubmerged() {
+        int maxWaterDepth = plugin.getConfig().getInt(
+                "control.flying-mount-max-water-depth",
+                4);
+
+        if (maxWaterDepth < 0 || !mount.isInWater()) {
+            return false;
+        }
+
+        Block currentBlock = mount.getLocation().getBlock();
+
+        for (int i = 0; i < maxWaterDepth; i++) {
+            if (!currentBlock.getRelative(0, i, 0).isLiquid()) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

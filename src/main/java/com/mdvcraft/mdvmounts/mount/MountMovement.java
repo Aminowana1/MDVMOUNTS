@@ -5,6 +5,7 @@ import com.mdvcraft.mdvmounts.MDVMountsPlugin;
 import org.bukkit.Input;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.block.Block;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
@@ -158,9 +159,8 @@ public final class MountMovement {
 
   public void tick(MountSession session) {
     Player player = session.player();
-    LivingEntity mount = session.mount();
 
-    if (!mount.isValid() || !player.isOnline()) {
+    if (!session.mount().isValid() || !player.isOnline()) {
       return;
     }
 
@@ -168,7 +168,10 @@ public final class MountMovement {
       refreshNativeAttributes(session);
     }
 
-    applyInput(session, player.getCurrentInput());
+    boolean hasToDismount = applyInput(session, player.getCurrentInput());
+    if (hasToDismount) {
+      plugin.getMountManager().forceDismount(player);
+    }
   }
 
   /**
@@ -191,7 +194,7 @@ public final class MountMovement {
     applyInput(session, input);
   }
 
-  private void applyInput(MountSession session, Input input) {
+  private boolean applyInput(MountSession session, Input input) {
     Player player = session.player();
     LivingEntity mount = session.mount();
 
@@ -200,31 +203,40 @@ public final class MountMovement {
     }
 
     switch (session.type()) {
-      case GROUND ->
+      case GROUND:
         applyGroundMovement(session, input, false);
+        break;
 
-      case JUMPER ->
+      case JUMPER:
         applyGroundMovement(session, input, true);
+        break;
 
-      case FLYING ->
+      case FLYING:
+        if (session.mountIsSubmerged()) {
+          return true;
+        }
+
         applyFreeMovement(session, input);
+        break;
 
-      case AQUATIC -> {
+      case AQUATIC:
         if (mount.isInWater()) {
           applyFreeMovement(session, input);
         } else {
           applyGroundMovement(session, input, false);
         }
-      }
+        break;
 
-      case LAVA -> {
+      case LAVA:
         if (mount.isInLava()) {
           applyFreeMovement(session, input);
         } else {
           applyGroundMovement(session, input, false);
         }
-      }
+        break;
     }
+
+    return false;
   }
 
   private void applyGroundMovement(
@@ -391,7 +403,7 @@ public final class MountMovement {
     double cos = session.cachedYawCos();
 
     double x = (-sin * forwardInput + cos * strafeInput) * speed;
-    double z = ( cos * forwardInput + sin * strafeInput) * speed;
+    double z = (cos * forwardInput + sin * strafeInput) * speed;
 
     return new Vector(x, 0.0D, z);
   }
@@ -495,4 +507,5 @@ public final class MountMovement {
         ? DEFAULT_JUMP_STRENGTH
         : Math.max(0.0D, attribute.getValue());
   }
+
 }

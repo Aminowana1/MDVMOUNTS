@@ -149,7 +149,7 @@ public final class MountManager {
             return false;
         }
 
-        MountSession session = new MountSession(player, mount, typeOptional.get());
+        MountSession session = new MountSession(player, mount, typeOptional.get(), plugin);
         sessions.put(player.getUniqueId(), session);
         prepareForControl(session);
         return true;
