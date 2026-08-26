@@ -32,6 +32,10 @@ control:
   # La entidad gira con la cámara del jinete.
   rotate-mount-with-rider: true
 
+  # Profundidad máxima que una montura voladora puede alcanzar dentro del agua.
+  # La montura se desmontará al superar esta profundidad.
+  # Usar -1 para deshabilitar esta restricción.
+  flying-mount-max-water-depth: 4
   # Acción usada para abrir el almacenamiento del invocador cuando SU
   # montura está invocada y dentro de la distancia configurada.
   # Opciones: LEFT_CLICK, RIGHT_CLICK, SHIFT_LEFT_CLICK, SHIFT_RIGHT_CLICK

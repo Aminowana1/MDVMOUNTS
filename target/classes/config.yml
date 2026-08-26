@@ -1,25 +1,24 @@
 # ==========================================================
-# MDVMounts 1.0.0
+# MDVMounts 1.1.1
 # Controlador ligero de monturas para MDVCRAFT.
 # ==========================================================
 #
-# IMPORTANTE:
-# MDVMounts NO tiene una estadística de velocidad propia.
-# Cada tick lee Attribute.MOVEMENT_SPEED de la entidad.
-# Por lo tanto, MovementSpeed de MythicMobs sigue siendo la
-# fuente de verdad y los cambios de atributo se reflejan en vivo.
+# Este archivo contiene SOLO movilidad y mensajes generales.
+# Los inventarios por invocador viven en storage.yml.
 #
-# MDVMounts tampoco borra ni reemplaza skills de MythicMobs.
-# Mientras una montura tiene jinete, únicamente puede pausar la
-# awareness/pathfinding vanilla para que la IA no pelee contra WASD.
-# Al desmontar, restaura el estado anterior.
+# Las configs se auto-actualizan: al iniciar o ejecutar /mdvmounts reload,
+# las claves nuevas se agregan sin reemplazar tus valores existentes.
+#
+# Rendimiento:
+# - Sin raytraces ni búsquedas de bloques por tick.
+# - MOVEMENT_SPEED y JUMP_STRENGTH se cachean.
+# - STEP_HEIGHT se aplica una vez al montar y Minecraft resuelve los escalones.
+# - Los cambios de input pueden aplicarse inmediatamente con PlayerInputEvent.
 
 tags:
-  # Recomendado: exigir este tag además del tag de comportamiento.
   require-base-tag: true
   base: mdv_mount
 
-  # Un mob debe tener uno de estos tags.
   ground: mdv_mount_ground
   flying: mdv_mount_flying
   aquatic: mdv_mount_aquatic
@@ -27,23 +26,66 @@ tags:
   jumper: mdv_mount_jumper
 
 control:
-  # Pausa la IA/pathfinding vanilla mientras el jugador conduce.
-  # No elimina skills de MythicMobs.
+  # Pausa la IA/pathfinding vanilla mientras el jugador conduce una montura.
   pause-vanilla-ai-while-ridden: true
 
-  # Hace que la criatura mire hacia la dirección horizontal del jinete.
+  # La entidad gira con la cámara del jinete.
   rotate-mount-with-rider: true
 
-  vertical-speed:
-    # Velocidad vertical base de las monturas.
-    # Valores mayores hacen que subir y bajar sea más rápido.
-    base-multiplier: 1.5
+  # Profundidad máxima que una montura voladora puede alcanzar dentro del agua.
+  # La montura se desmontará al superar esta profundidad.
+  # Usar -1 para deshabilitar esta restricción.
+  flying-mount-max-water-depth: 4
 
-    # Multiplica la velocidad base por JUMP_STRENGTH de la criatura.
-    # Permite que cada montura tenga una velocidad vertical diferente
-    # utilizando sus atributos de MythicMobs.
+  # Sensación tipo caballo para TODAS las monturas GROUND.
+  # Usa STEP_HEIGHT nativo: no busca bloques ni hace raytraces.
+  ground-horse-feel:
+    enabled: true
+    step-height: 1.0
+
+  # Porcentajes de movimiento horizontal por controlador.
+  # 100 = MovementSpeed completo; 50 = mitad; 25 = un cuarto.
+  movement-percentages:
+    ground:
+      forward: 100.0
+      backward: 25.0
+      lateral: 50.0
+      normalize-diagonal: true
+
+    flying:
+      forward: 100.0
+      backward: 25.0
+      lateral: 50.0
+      normalize-diagonal: true
+
+    aquatic:
+      forward: 100.0
+      backward: 25.0
+      lateral: 50.0
+      normalize-diagonal: true
+
+    lava:
+      forward: 100.0
+      backward: 25.0
+      lateral: 50.0
+      normalize-diagonal: true
+
+    jumper:
+      forward: 100.0
+      backward: 25.0
+      lateral: 50.0
+      normalize-diagonal: true
+
+  vertical-speed:
+    base-multiplier: 1.5
     multiply-by-jump-strength: true
 
+performance:
+  # Aplica W/A/S/D/JUMP al recibir PlayerInputEvent.
+  immediate-input-response: true
+
+  # Refresca MOVEMENT_SPEED y JUMP_STRENGTH cada 10 ticks (0.5 s).
+  attribute-refresh-ticks: 10
 
 messages:
   mounted: "&aMontura controlada."
