@@ -1,3 +1,7 @@
+## 1.1.12 - anti-dash preventivo del camello
+
+Para camellos con `mdv_mount_camel_normal_jump`, MDVMounts puede usar ProtocolLib 5.4.0+ para cancelar `START_RIDING_JUMP` y `STOP_RIDING_JUMP` antes de que el CAMEL vanilla procese la carga/dash. ProtocolLib es `softdepend`; sin él se conservan las capas Bukkit de respaldo, pero el bloqueo preventivo por paquete no está disponible.
+
 # MDVMounts 1.1.9
 
 > 1.1.9 endurece `mdv_mount_camel_normal_jump`: el CAMEL etiquetado nunca usa el dash vanilla; SPACE siempre dispara el salto normal configurado. La supresión es barata y sólo se mantiene para conductores que están usando/recién soltaron SPACE.

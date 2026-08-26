@@ -6,7 +6,7 @@
 
     <groupId>com.mdvcraft</groupId>
     <artifactId>mdvmounts</artifactId>
-    <version>1.1.11</version>
+    <version>1.1.12</version>
     <name>MDVMounts</name>
     <description>Tag-driven mount controller for MDVCRAFT.</description>
 
@@ -29,6 +29,20 @@
             <artifactId>paper-api</artifactId>
             <version>${paper.version}</version>
             <scope>provided</scope>
+        </dependency>
+
+        <!--
+          Optional at runtime, but compiled against directly.
+          When ProtocolLib is present, MDVMounts cancels the native camel
+          START_RIDING_JUMP / STOP_RIDING_JUMP packets before vanilla sees
+          them. This is the definitive anti-dash layer for tagged camels.
+        -->
+        <dependency>
+            <groupId>net.dmulloy2</groupId>
+            <artifactId>ProtocolLib</artifactId>
+            <version>5.4.0</version>
+            <scope>provided</scope>
+            <optional>true</optional>
         </dependency>
     </dependencies>
 

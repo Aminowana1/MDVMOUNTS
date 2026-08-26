@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class MountManager {
     private final MDVMountsPlugin plugin;
@@ -73,6 +74,13 @@ public final class MountManager {
     private static final int CAMEL_RELEASE_GUARD_TICKS = 12;
     private final Map<UUID, Integer> nativeCamelReleaseGuardTicks = new HashMap<>();
 
+    // ProtocolLib reads this set from its network thread. It therefore must be
+    // thread-safe. Entries are added/removed only from Bukkit's main thread
+    // when a player mounts/dismounts a tagged native camel. No entity lookup is
+    // performed from the packet thread: the packet listener is only an O(1)
+    // UUID membership check.
+    private final Set<UUID> nativeCamelPacketBlockedDrivers = ConcurrentHashMap.newKeySet();
+
     // Strict cap is only active during the jump/charge window, so ordinary
     // camel riding outside SPACE is untouched.
     private static final double CAMEL_GUARDED_HORIZONTAL_SPEED_MULTIPLIER = 1.15D;
@@ -105,6 +113,7 @@ public final class MountManager {
         nativeCamelDashGuardMounts.clear();
         nativeCamelHardDashBlockTicks.clear();
         nativeCamelReleaseGuardTicks.clear();
+        nativeCamelPacketBlockedDrivers.clear();
     }
 
     public void reloadSettings() {
@@ -136,6 +145,15 @@ public final class MountManager {
                 "control.flying-mount-max-water-depth",
                 4);
 
+        // Reload is rare and happens on the main thread. Rebuild all native
+        // camel guard state from the actual online riders so no stale UUID or
+        // previous tag value survives a config reload.
+        nativeCamelJumpHeld.clear();
+        nativeCamelDashGuardMounts.clear();
+        nativeCamelHardDashBlockTicks.clear();
+        nativeCamelReleaseGuardTicks.clear();
+        nativeCamelPacketBlockedDrivers.clear();
+
         for (MountSession session : sessions.values()) {
             session.setWallClimber(
                     session.type() == MountType.GROUND
@@ -143,6 +161,7 @@ public final class MountManager {
         }
 
         movement.reloadSettings(sessions.values());
+        refreshNativeCamelPacketGuards();
     }
 
     public Optional<MountType> resolveType(Entity entity) {
@@ -280,6 +299,91 @@ public final class MountManager {
         nativeCamelJumpHeld.remove(playerId);
         nativeCamelDashGuardMounts.remove(playerId);
         nativeCamelReleaseGuardTicks.remove(playerId);
+        nativeCamelPacketBlockedDrivers.remove(playerId);
+    }
+
+    /**
+     * Tracks the driver of a tagged native camel as soon as Bukkit reports the
+     * mount action. This happens before the player can meaningfully charge a
+     * camel jump, so ProtocolLib can reject the very first vanilla jump packet.
+     *
+     * Only the first seat is registered: the second camel passenger is never a
+     * driver and must not have unrelated riding-jump packets blocked.
+     */
+    public void handleNativeCamelMount(Player player, Entity mounted) {
+        if (!camelNormalJumpEnabled
+                || !(mounted instanceof Camel camel)
+                || camelNormalJumpTag == null
+                || camelNormalJumpTag.isBlank()
+                || !camel.getScoreboardTags().contains(camelNormalJumpTag)) {
+            return;
+        }
+
+        // EntityMountEvent is fired while the mount is being established. For
+        // the first passenger the current passenger list can still be empty.
+        // If it is not empty, only accept the player that is already seat #1.
+        if (!camel.getPassengers().isEmpty()
+                && !camel.getPassengers().getFirst().getUniqueId().equals(player.getUniqueId())) {
+            return;
+        }
+
+        UUID playerId = player.getUniqueId();
+        nativeCamelPacketBlockedDrivers.add(playerId);
+        nativeCamelDashGuardMounts.put(playerId, camel.getUniqueId());
+        camel.setDashing(false);
+    }
+
+    /**
+     * Re-evaluates seat #1 after a native camel passenger leaves. Used one
+     * tick after EntityDismountEvent so a former second passenger that becomes
+     * the driver is protected before their next jump command.
+     */
+    public void refreshNativeCamelDriver(Entity mounted) {
+        if (!camelNormalJumpEnabled
+                || !(mounted instanceof Camel camel)
+                || camelNormalJumpTag == null
+                || camelNormalJumpTag.isBlank()
+                || !camel.getScoreboardTags().contains(camelNormalJumpTag)
+                || camel.getPassengers().isEmpty()
+                || !(camel.getPassengers().getFirst() instanceof Player driver)) {
+            return;
+        }
+
+        UUID playerId = driver.getUniqueId();
+        nativeCamelPacketBlockedDrivers.add(playerId);
+        nativeCamelDashGuardMounts.put(playerId, camel.getUniqueId());
+        camel.setDashing(false);
+    }
+
+    /**
+     * Network-thread-safe fast path used by the ProtocolLib packet listener.
+     * No Bukkit entity/world access happens from the packet thread.
+     */
+    public boolean shouldBlockNativeCamelJumpPacket(UUID playerId) {
+        return playerId != null && nativeCamelPacketBlockedDrivers.contains(playerId);
+    }
+
+    /**
+     * Rebuilds packet guards only on plugin reload/start. This is a one-time
+     * O(online players) pass, never a repeating world/entity scan.
+     */
+    private void refreshNativeCamelPacketGuards() {
+        nativeCamelPacketBlockedDrivers.clear();
+
+        if (!camelNormalJumpEnabled
+                || camelNormalJumpTag == null
+                || camelNormalJumpTag.isBlank()) {
+            return;
+        }
+
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            Entity vehicle = player.getVehicle();
+            if (isTaggedNativeCamelDriver(player, vehicle)) {
+                nativeCamelPacketBlockedDrivers.add(player.getUniqueId());
+                nativeCamelDashGuardMounts.put(player.getUniqueId(), vehicle.getUniqueId());
+                ((Camel) vehicle).setDashing(false);
+            }
+        }
     }
 
     /**
@@ -338,6 +442,7 @@ public final class MountManager {
         // Once this driver has produced input, keep the camel guarded for the
         // rest of the ride. Releasing SPACE no longer opens a timing window.
         nativeCamelDashGuardMounts.put(playerId, camel.getUniqueId());
+        nativeCamelPacketBlockedDrivers.add(playerId);
 
         // Kill the vanilla dash state immediately on every input update.
         camel.setDashing(false);
@@ -421,6 +526,7 @@ public final class MountManager {
                 iterator.remove();
                 nativeCamelJumpHeld.remove(playerId);
                 nativeCamelReleaseGuardTicks.remove(playerId);
+                nativeCamelPacketBlockedDrivers.remove(playerId);
                 continue;
             }
 

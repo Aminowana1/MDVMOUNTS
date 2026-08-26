@@ -1,5 +1,5 @@
 # ==========================================================
-# MDVMounts 1.1.11
+# MDVMounts 1.1.12
 # Controlador ligero de monturas para MDVCRAFT.
 # ==========================================================
 #
@@ -102,10 +102,10 @@ control:
 
   # CAMEL vanilla con salto normal en lugar del dash.
   # Solo actúa en camellos con el tag tags.camel-normal-jump.
-  # El dash vanilla se bloquea durante TODO el tiempo que SPACE esté
-  # mantenido y durante 12 ticks después de soltarlo. La protección actúa
-  # tanto sobre la velocidad como sobre el movimiento real de la entidad.
-  # Spamear o mantener SPACE no permite que el dash físico se cuele.
+  # Con ProtocolLib 5.4.0+, START_RIDING_JUMP y STOP_RIDING_JUMP se
+  # cancelan ANTES de que vanilla los procese. Las capas Bukkit/velocidad
+  # anteriores se conservan como respaldo. Spamear o mantener SPACE no
+  # puede iniciar el dash físico del CAMEL.
   # El primer pasajero es el conductor; el segundo sigue siendo pasajero.
   camel-normal-jump:
     enabled: true

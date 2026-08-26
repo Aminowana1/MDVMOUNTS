@@ -4,6 +4,7 @@ import io.papermc.paper.event.entity.EntityMoveEvent;
 import com.mdvcraft.mdvmounts.MDVMountsPlugin;
 import com.mdvcraft.mdvmounts.mount.MountManager;
 import com.mdvcraft.mdvmounts.mount.MountSession;
+import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.Camel;
 import org.bukkit.entity.Entity;
@@ -15,6 +16,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityDismountEvent;
+import org.bukkit.event.entity.EntityMountEvent;
 import org.bukkit.event.entity.HorseJumpEvent;
 import org.bukkit.event.player.PlayerInputEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
@@ -143,15 +145,37 @@ public final class MountListener implements Listener {
         event.setTo(to);
     }
 
+    /**
+     * Registers the first passenger of a tagged native camel before any jump
+     * packet can be useful to vanilla. This powers the ProtocolLib fast path
+     * without doing Bukkit entity lookups from the network thread.
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onMount(EntityMountEvent event) {
+        if (!(event.getEntity() instanceof Player player)) {
+            return;
+        }
+
+        mountManager.handleNativeCamelMount(player, event.getMount());
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onDismount(EntityDismountEvent event) {
         if (!(event.getEntity() instanceof Player player)) {
             return;
         }
 
-        // Also clears the rising-edge state used by tagged native camels,
-        // which do not create a normal MDVMounts session.
+        // Also clears the rising-edge/packet state used by tagged native
+        // camels, which do not create a normal MDVMounts session.
+        Entity dismounted = event.getDismounted();
         mountManager.clearInputState(player);
+
+        // If seat #2 becomes seat #1 after the driver leaves, register that
+        // new driver on the next tick (after vanilla updates passengers).
+        if (dismounted instanceof Camel) {
+            Bukkit.getScheduler().runTask(plugin,
+                    () -> mountManager.refreshNativeCamelDriver(dismounted));
+        }
 
         MountSession session = mountManager.getSession(player);
         if (session == null || !event.getDismounted().getUniqueId().equals(session.mount().getUniqueId())) {

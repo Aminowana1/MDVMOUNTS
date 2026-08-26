@@ -1,0 +1,18 @@
+MDVMounts 1.1.12
+================
+
+- Corrige de raíz el dash vanilla de CAMEL para mdv_mount_camel_normal_jump.
+- Si ProtocolLib 5.4.0+ está presente, cancela los paquetes de cliente
+  START_RIDING_JUMP y STOP_RIDING_JUMP antes de que Minecraft los procese.
+- El salto normal sigue viniendo de PlayerInputEvent, por lo que SPACE conserva
+  el salto custom aunque el comando de salto vanilla quede bloqueado.
+- El listener de paquetes no consulta entidades ni mundo desde el hilo de red:
+  usa únicamente una comprobación O(1) en un Set concurrente de UUIDs.
+- Se registra al conductor al montar y se limpia al desmontar. Si el primer
+  pasajero baja, el segundo se registra al convertirse en conductor.
+- Se mantienen como respaldo setDashing(false), HorseJumpEvent y la limitación
+  de movimiento de 1.1.11.
+- Conserva flying-mount-max-water-depth, trepado, almacenamiento y protección
+  de caída.
+- ProtocolLib sigue siendo softdepend: sin él MDVMounts carga, pero el bloqueo
+  preventivo del paquete no puede activarse.

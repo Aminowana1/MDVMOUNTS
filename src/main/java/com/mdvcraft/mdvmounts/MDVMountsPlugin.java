@@ -1,6 +1,7 @@
 package com.mdvcraft.mdvmounts;
 
 import com.mdvcraft.mdvmounts.command.MDVMountsCommand;
+import com.mdvcraft.mdvmounts.compat.ProtocolLibCamelJumpBlocker;
 import com.mdvcraft.mdvmounts.config.PluginConfigFiles;
 import com.mdvcraft.mdvmounts.listener.InvokerStorageListener;
 import com.mdvcraft.mdvmounts.listener.MountListener;
@@ -17,6 +18,7 @@ public final class MDVMountsPlugin extends JavaPlugin {
     private MountManager mountManager;
     private InvokerStorageManager storageManager;
     private MountSkillManager mountSkillManager;
+    private ProtocolLibCamelJumpBlocker camelJumpPacketBlocker;
 
     @Override
     public void onEnable() {
@@ -39,11 +41,32 @@ public final class MDVMountsPlugin extends JavaPlugin {
         }
 
         mountManager.start();
-        getLogger().info("MDVMounts 1.1.11 habilitado. Camello con bloqueo físico de dash, trepado, agua y protección de caída.");
+
+        if (getServer().getPluginManager().isPluginEnabled("ProtocolLib")) {
+            try {
+                camelJumpPacketBlocker = new ProtocolLibCamelJumpBlocker(this, mountManager);
+                camelJumpPacketBlocker.start();
+                getLogger().info("Anti-dash de camello: bloqueo de paquetes ProtocolLib activo.");
+            } catch (Throwable throwable) {
+                camelJumpPacketBlocker = null;
+                getLogger().severe("No se pudo activar el bloqueo de paquetes del camello: "
+                        + throwable.getMessage());
+            }
+        } else {
+            getLogger().warning("ProtocolLib no está instalado. El camello usará solo las capas "
+                    + "Bukkit de respaldo; para bloquear el dash vanilla antes de que Minecraft "
+                    + "lo procese, instala ProtocolLib 5.4.0 o superior.");
+        }
+
+        getLogger().info("MDVMounts 1.1.12 habilitado. Anti-dash por paquete, trepado, agua y protección de caída.");
     }
 
     @Override
     public void onDisable() {
+        if (camelJumpPacketBlocker != null) {
+            camelJumpPacketBlocker.stop();
+            camelJumpPacketBlocker = null;
+        }
         if (mountSkillManager != null) {
             mountSkillManager.shutdown();
         }
