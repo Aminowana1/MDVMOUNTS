@@ -1,9 +1,9 @@
 # ==========================================================
-# MDVMounts 1.1.1
+# MDVMounts 1.1.4
 # Controlador ligero de monturas para MDVCRAFT.
 # ==========================================================
 #
-# Este archivo contiene SOLO movilidad y mensajes generales.
+# Este archivo contiene movilidad, controles y mensajes generales.
 # Los inventarios por invocador viven en storage.yml.
 #
 # Las configs se auto-actualizan: al iniciar o ejecutar /mdvmounts reload,
@@ -36,6 +36,27 @@ control:
   # La montura se desmontará al superar esta profundidad.
   # Usar -1 para deshabilitar esta restricción.
   flying-mount-max-water-depth: 4
+  # Acción usada para abrir el almacenamiento del invocador cuando SU
+  # montura está invocada y dentro de la distancia configurada.
+  # Opciones: LEFT_CLICK, RIGHT_CLICK, SHIFT_LEFT_CLICK, SHIFT_RIGHT_CLICK
+  # LEFT_CLICK conserva el comportamiento actual.
+  storage-open-interaction: LEFT_CLICK
+
+  # Habilidad activa de la montura.
+  # La skill se toma de un scoreboard tag del mob. Ejemplo:
+  #   mdv_mount_skill_TORO_EMBESTIDA
+  # al pulsar SPRINT ejecuta la skill MythicMobs TORO_EMBESTIDA con la
+  # montura como caster y el jinete como @trigger.
+  #
+  # input acepta: SPRINT, JUMP, SNEAK, FORWARD, BACKWARD, LEFT, RIGHT.
+  # Alias: CTRL/CONTROL = SPRINT, SPACE = JUMP, SHIFT = SNEAK,
+  #        W/S/A/D = FORWARD/BACKWARD/LEFT/RIGHT.
+  # SPRINT es la acción de sprint de Minecraft: si el jugador cambia la tecla
+  # en sus controles, MDVMounts sigue la acción, no una tecla física concreta.
+  mount-skills:
+    enabled: true
+    input: SPRINT
+    tag-prefix: mdv_mount_skill_
 
   # Sensación tipo caballo para TODAS las monturas GROUND.
   # Usa STEP_HEIGHT nativo: no busca bloques ni hace raytraces.

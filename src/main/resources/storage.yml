@@ -1,15 +1,16 @@
 # ==========================================================
-# MDVMounts 1.1.2 - ALMACENAMIENTO DE MONTURAS
+# MDVMounts 1.1.3 - ALMACENAMIENTO DE MONTURAS
 # ==========================================================
 #
-# CLICK IZQUIERDO con el invocador:
-#   abre el almacenamiento si SU montura está invocada y cerca.
+# La acción para abrir el almacenamiento se elige en config.yml:
+#   control.storage-open-interaction
 #
-# CLICK DERECHO:
-#   MDVMounts no abre el almacenamiento. Crucible/MythicMobs puede usarlo
-#   normalmente para invocar la montura y MDVMounts la enlaza después.
+# Por defecto sigue siendo LEFT_CLICK. El click derecho que no sea consumido
+# por una apertura continúa disponible para Crucible/MythicMobs y el enlace.
 #
 # Cada ItemStack físico tiene su propio minecraft:container.
+# MDVMounts oculta el componente CONTAINER del tooltip para que Minecraft no
+# muestre la lista de objetos almacenados sobre el lore del silbato.
 # El UUID de enlace se renueva en cada invocación exitosa para evitar que
 # dos copias físicas de un invocador compartan accidentalmente identidad.
 # Si el silbato cambia de dueño, sus objetos viajan con él.

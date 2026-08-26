@@ -20,6 +20,7 @@ import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.inventory.EquipmentSlot;
@@ -33,12 +34,14 @@ public final class InvokerStorageListener implements Listener {
     }
 
     /**
-     * LEFT CLICK = open storage, only if the exact bound mount is currently
-     * summoned and close enough.
+     * Storage opening is configurable through:
+     * control.storage-open-interaction
      *
-     * RIGHT CLICK is never consumed by storage. It remains available for
-     * Crucible/MythicMobs invocation; MDVMounts only arms the tiny post-summon
-     * binding window.
+     * Supported values:
+     * LEFT_CLICK, RIGHT_CLICK, SHIFT_LEFT_CLICK, SHIFT_RIGHT_CLICK.
+     *
+     * A right click that is not consumed by an actual storage opening remains
+     * available to Crucible/MythicMobs for normal mount invocation.
      */
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onUse(PlayerInteractEvent event) {
@@ -53,29 +56,43 @@ public final class InvokerStorageListener implements Listener {
 
         Action action = event.getAction();
         if (action == Action.LEFT_CLICK_AIR || action == Action.LEFT_CLICK_BLOCK) {
-            if (storageManager.tryOpen(event.getPlayer(), item)) {
-                event.setCancelled(true);
-                event.setUseItemInHand(org.bukkit.event.Event.Result.DENY);
-                event.setUseInteractedBlock(org.bukkit.event.Event.Result.DENY);
+            if (storageManager.shouldOpenFromLeftClick(event.getPlayer())
+                    && storageManager.tryOpen(event.getPlayer(), item)) {
+                cancelUse(event);
             }
             return;
         }
 
         if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
+            if (storageManager.shouldOpenFromRightClick(event.getPlayer())
+                    && storageManager.tryOpen(event.getPlayer(), item)) {
+                cancelUse(event);
+                return;
+            }
+
+            // Storage did not open: preserve Crucible/MythicMobs right-click
+            // invocation exactly as before and only arm the post-summon link.
             storageManager.armBindingAfterInvocation(event.getPlayer(), item);
         }
     }
 
-    // RIGHT CLICK on an entity can also be the Crucible use that summons a
-    // mount, so arm binding there too. Storage itself never opens here.
+    // Right-clicking an entity can also be a Crucible use. If RIGHT_CLICK or
+    // SHIFT_RIGHT_CLICK is configured, storage gets first chance to consume the
+    // click only when the exact bound mount is already nearby.
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onUseOnEntity(PlayerInteractEntityEvent event) {
         if (event.getHand() != EquipmentSlot.HAND) {
             return;
         }
-        storageManager.armBindingAfterInvocation(
-                event.getPlayer(),
-                event.getPlayer().getInventory().getItemInMainHand());
+
+        Player player = event.getPlayer();
+        ItemStack item = player.getInventory().getItemInMainHand();
+        if (storageManager.shouldOpenFromRightClick(player)
+                && storageManager.tryOpen(player, item)) {
+            event.setCancelled(true);
+            return;
+        }
+        storageManager.armBindingAfterInvocation(player, item);
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
@@ -83,23 +100,44 @@ public final class InvokerStorageListener implements Listener {
         if (event.getHand() != EquipmentSlot.HAND) {
             return;
         }
-        storageManager.armBindingAfterInvocation(
-                event.getPlayer(),
-                event.getPlayer().getInventory().getItemInMainHand());
+
+        Player player = event.getPlayer();
+        ItemStack item = player.getInventory().getItemInMainHand();
+        if (storageManager.shouldOpenFromRightClick(player)
+                && storageManager.tryOpen(player, item)) {
+            event.setCancelled(true);
+            return;
+        }
+        storageManager.armBindingAfterInvocation(player, item);
     }
 
-    // A direct left click on an entity is represented as an attack event, not
-    // PlayerInteractEvent. If a valid bound mount is nearby, consume that hit
-    // and open the invoker storage instead.
+    // A direct left click on an entity is represented as an attack event. Only
+    // consume it when the configured interaction is a left-click variant and a
+    // valid bound mount is actually in range.
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onLeftClickEntity(EntityDamageByEntityEvent event) {
         if (!(event.getDamager() instanceof Player player)) {
             return;
         }
+        if (!storageManager.shouldOpenFromLeftClick(player)) {
+            return;
+        }
+
         ItemStack item = player.getInventory().getItemInMainHand();
         if (storageManager.tryOpen(player, item)) {
             event.setCancelled(true);
         }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onJoin(PlayerJoinEvent event) {
+        storageManager.refreshContainerTooltip(event.getPlayer());
+    }
+
+    private void cancelUse(PlayerInteractEvent event) {
+        event.setCancelled(true);
+        event.setUseItemInHand(org.bukkit.event.Event.Result.DENY);
+        event.setUseInteractedBlock(org.bukkit.event.Event.Result.DENY);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
