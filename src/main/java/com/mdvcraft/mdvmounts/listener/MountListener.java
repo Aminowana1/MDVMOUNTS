@@ -122,9 +122,10 @@ public final class MountListener implements Listener {
     /**
      * Final hard stop for the native camel dash.
      *
-     * EntityMoveEvent is cancellable/mutable on Paper. Instead of cancelling
-     * the whole move (which would also kill our vertical jump), MDVMounts keeps
-     * Y intact and clamps only an abnormal horizontal dash displacement.
+     * In 1.1.11 this is active for the whole SPACE-held window and a short
+     * release tail, not only when Camel#isDashing becomes true. That matters
+     * because modern horse/camel jump charging is partly client-assisted.
+     * Y is preserved so the custom normal jump is untouched.
      *
      * Event-driven: no entity scan and no extra scheduler.
      */

@@ -60,19 +60,23 @@ public final class MountManager {
     // drivers of tagged camels that have actually sent PlayerInputEvent.
     private final Map<UUID, UUID> nativeCamelDashGuardMounts = new HashMap<>();
 
-    // A HorseJumpEvent arms a tiny 3-tick one-shot horizontal block. If
-    // vanilla still tries to turn that jump into a camel dash, the next
-    // EntityMoveEvent keeps only Y and discards the horizontal dash movement.
-    // Entries expire automatically, so a camel that never moves is not left
-    // with stale state.
-    private static final int CAMEL_HARD_DASH_BLOCK_TICKS = 3;
+    // HorseJumpEvent is only an extra signal on modern Paper because its
+    // cancellation is legacy/client-assisted. It still arms a short hard
+    // suppression window around the release packet.
+    private static final int CAMEL_HARD_DASH_BLOCK_TICKS = 6;
     private final Map<UUID, Integer> nativeCamelHardDashBlockTicks = new HashMap<>();
 
-    // Final safety net for Paper/Purpur's client-assisted camel dash:
-    // any abnormally large horizontal movement is clamped by EntityMoveEvent.
-    // Normal riding at MOVEMENT_SPEED is left untouched.
-    private static final double CAMEL_MAX_HORIZONTAL_SPEED_MULTIPLIER = 1.75D;
-    private static final double CAMEL_MIN_HORIZONTAL_SPEED_CAP = 0.45D;
+    // The important guard is tied to the actual SPACE state, not to the camel's
+    // dashing flag. While SPACE is held, and for a short window after release,
+    // any horizontal velocity/displacement above ordinary riding speed is
+    // clamped. This closes the long-hold -> release race that 1.1.10 missed.
+    private static final int CAMEL_RELEASE_GUARD_TICKS = 12;
+    private final Map<UUID, Integer> nativeCamelReleaseGuardTicks = new HashMap<>();
+
+    // Strict cap is only active during the jump/charge window, so ordinary
+    // camel riding outside SPACE is untouched.
+    private static final double CAMEL_GUARDED_HORIZONTAL_SPEED_MULTIPLIER = 1.15D;
+    private static final double CAMEL_GUARDED_MIN_HORIZONTAL_SPEED_CAP = 0.10D;
 
     public MountManager(MDVMountsPlugin plugin) {
         this.plugin = plugin;
@@ -100,6 +104,7 @@ public final class MountManager {
         nativeCamelJumpHeld.clear();
         nativeCamelDashGuardMounts.clear();
         nativeCamelHardDashBlockTicks.clear();
+        nativeCamelReleaseGuardTicks.clear();
     }
 
     public void reloadSettings() {
@@ -274,6 +279,7 @@ public final class MountManager {
         UUID playerId = player.getUniqueId();
         nativeCamelJumpHeld.remove(playerId);
         nativeCamelDashGuardMounts.remove(playerId);
+        nativeCamelReleaseGuardTicks.remove(playerId);
     }
 
     /**
@@ -340,6 +346,14 @@ public final class MountManager {
             nativeCamelJumpHeld.add(playerId);
         } else {
             nativeCamelJumpHeld.remove(playerId);
+
+            // The vanilla camel dash is applied on/around SPACE release.
+            // Arm the guard immediately when the input edge falls, before a
+            // delayed client-assisted dash can become real movement.
+            if (wasHeld) {
+                nativeCamelReleaseGuardTicks.put(playerId, CAMEL_RELEASE_GUARD_TICKS);
+                clampTaggedCamelHorizontalVelocity(camel);
+            }
         }
 
         // Rising edge only. Holding SPACE never repeats the custom jump.
@@ -387,6 +401,7 @@ public final class MountManager {
         }
 
         if (nativeCamelDashGuardMounts.isEmpty()) {
+            nativeCamelReleaseGuardTicks.clear();
             return;
         }
 
@@ -405,14 +420,81 @@ public final class MountManager {
                     || !vehicle.getUniqueId().equals(camelId)) {
                 iterator.remove();
                 nativeCamelJumpHeld.remove(playerId);
+                nativeCamelReleaseGuardTicks.remove(playerId);
                 continue;
             }
 
-            // Permanent per-ride guard. Even if vanilla re-arms the dash while
-            // SPACE is held, released, or spammed, the state is cleared again
-            // on the next server tick.
-            ((Camel) vehicle).setDashing(false);
+            Camel camel = (Camel) vehicle;
+
+            // Paper exposes the latest input directly. Reconcile it every tick
+            // so a lost/coalesced PlayerInputEvent cannot open a release race.
+            boolean jumpNow = player.getCurrentInput().isJump();
+            boolean wasHeld = nativeCamelJumpHeld.contains(playerId);
+
+            if (jumpNow) {
+                nativeCamelJumpHeld.add(playerId);
+            } else {
+                nativeCamelJumpHeld.remove(playerId);
+                if (wasHeld) {
+                    nativeCamelReleaseGuardTicks.put(playerId, CAMEL_RELEASE_GUARD_TICKS);
+                }
+            }
+
+            Integer releaseTicks = nativeCamelReleaseGuardTicks.get(playerId);
+            if (releaseTicks != null) {
+                if (releaseTicks <= 1) {
+                    nativeCamelReleaseGuardTicks.remove(playerId);
+                } else {
+                    nativeCamelReleaseGuardTicks.put(playerId, releaseTicks - 1);
+                }
+            }
+
+            // Permanent per-ride state reset.
+            camel.setDashing(false);
+
+            // During the complete SPACE charge and the release tail, clamp the
+            // actual velocity itself. EntityMoveEvent applies the same rule to
+            // displacement, so the dash cannot slip through on either side of
+            // the entity tick ordering.
+            if (jumpNow || releaseTicks != null) {
+                clampTaggedCamelHorizontalVelocity(camel);
+            }
         }
+    }
+
+    private boolean isCamelJumpSuppressionActive(Camel camel) {
+        if (camel.getPassengers().isEmpty()
+                || !(camel.getPassengers().getFirst() instanceof Player driver)) {
+            return false;
+        }
+
+        UUID playerId = driver.getUniqueId();
+        return nativeCamelJumpHeld.contains(playerId)
+                || nativeCamelReleaseGuardTicks.containsKey(playerId)
+                || nativeCamelHardDashBlockTicks.containsKey(camel.getUniqueId());
+    }
+
+    private double guardedCamelHorizontalCap(Camel camel) {
+        AttributeInstance movementSpeed = camel.getAttribute(Attribute.MOVEMENT_SPEED);
+        double configuredSpeed = movementSpeed == null ? 0.30D : movementSpeed.getValue();
+        return Math.max(
+                CAMEL_GUARDED_MIN_HORIZONTAL_SPEED_CAP,
+                configuredSpeed * CAMEL_GUARDED_HORIZONTAL_SPEED_MULTIPLIER);
+    }
+
+    private void clampTaggedCamelHorizontalVelocity(Camel camel) {
+        Vector velocity = camel.getVelocity();
+        double horizontal = Math.hypot(velocity.getX(), velocity.getZ());
+        double cap = guardedCamelHorizontalCap(camel);
+
+        if (horizontal <= cap || horizontal <= 0.0D) {
+            return;
+        }
+
+        double scale = cap / horizontal;
+        velocity.setX(velocity.getX() * scale);
+        velocity.setZ(velocity.getZ() * scale);
+        camel.setVelocity(velocity);
     }
 
     /**
@@ -439,43 +521,32 @@ public final class MountManager {
             return false;
         }
 
-        boolean hardBlock = nativeCamelHardDashBlockTicks.remove(camel.getUniqueId()) != null;
         boolean wasDashing = camel.isDashing();
         camel.setDashing(false);
 
-        double dx = to.getX() - from.getX();
-        double dz = to.getZ() - from.getZ();
-        double horizontalDistance = Math.sqrt(dx * dx + dz * dz);
-
-        // Strongest path: if Paper emitted HorseJumpEvent or the camel actually
-        // entered dashing state, this movement gets ZERO horizontal dash.
-        // Vertical Y is intentionally left untouched so the custom normal jump
-        // still works.
-        if (hardBlock || wasDashing) {
-            to.setX(from.getX());
-            to.setZ(from.getZ());
-            return true;
-        }
-
-        AttributeInstance movementSpeed = camel.getAttribute(Attribute.MOVEMENT_SPEED);
-        double configuredSpeed = movementSpeed == null ? 0.30D : movementSpeed.getValue();
-        double maxHorizontal = Math.max(
-                CAMEL_MIN_HORIZONTAL_SPEED_CAP,
-                configuredSpeed * CAMEL_MAX_HORIZONTAL_SPEED_MULTIPLIER);
-
-        if (horizontalDistance <= maxHorizontal) {
+        // 1.1.11 no waits for isDashing(): the complete SPACE-held/release
+        // window is treated as potentially dangerous because modern camel
+        // charging is client-assisted.
+        boolean guarded = wasDashing || isCamelJumpSuppressionActive(camel);
+        if (!guarded) {
             return false;
         }
 
-        // Last fallback for a client-assisted dash whose flag was already
-        // cleared before EntityMoveEvent: cap the horizontal displacement to
-        // ordinary riding speed while preserving direction and Y.
-        if (horizontalDistance > 0.0D) {
-            double scale = maxHorizontal / horizontalDistance;
-            to.setX(from.getX() + dx * scale);
-            to.setZ(from.getZ() + dz * scale);
+        double dx = to.getX() - from.getX();
+        double dz = to.getZ() - from.getZ();
+        double horizontalDistance = Math.hypot(dx, dz);
+        double maxHorizontal = guardedCamelHorizontalCap(camel);
+
+        if (horizontalDistance <= maxHorizontal || horizontalDistance <= 0.0D) {
+            return false;
         }
 
+        // Preserve normal riding direction and ALL vertical movement. Only the
+        // excess horizontal component that can contain the vanilla dash is
+        // removed.
+        double scale = maxHorizontal / horizontalDistance;
+        to.setX(from.getX() + dx * scale);
+        to.setZ(from.getZ() + dz * scale);
         return true;
     }
 

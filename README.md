@@ -212,6 +212,15 @@ target/MDVMounts-1.1.8.jar
 ```
 
 
+
+## 1.1.11
+
+- Bloqueo físico del dash del CAMEL durante todo SPACE y 12 ticks tras soltarlo.
+- Corrige el caso de mantener SPACE varios segundos, cargar la barra vanilla y soltar.
+- La supresión ya no depende de que `Camel#isDashing()` llegue a marcarse a tiempo.
+- Se limita únicamente el exceso horizontal; el salto vertical custom se conserva.
+- Mantiene `control.flying-mount-max-water-depth`.
+
 ## 1.1.10
 
 - `mdv_mount_camel_normal_jump` ahora usa un bloqueo anti-dash de cuatro capas: input, guard por tick del conductor, `HorseJumpEvent` y clamp horizontal en `EntityMoveEvent`.

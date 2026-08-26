@@ -39,7 +39,7 @@ public final class MDVMountsPlugin extends JavaPlugin {
         }
 
         mountManager.start();
-        getLogger().info("MDVMounts 1.1.9 habilitado. Camello sin dash, trepado y protección de caída del jinete por tag.");
+        getLogger().info("MDVMounts 1.1.11 habilitado. Camello con bloqueo físico de dash, trepado, agua y protección de caída.");
     }
 
     @Override

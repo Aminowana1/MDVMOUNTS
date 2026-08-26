@@ -1,0 +1,9 @@
+MDVMounts 1.1.11
+
+- Corrige el caso reproducible del CAMEL: mantener SPACE varios segundos, cargar la barra vanilla y soltar.
+- El anti-dash ya no depende de Camel#isDashing ni de HorseJumpEvent para detectar el momento peligroso.
+- Mientras SPACE está mantenido y durante 12 ticks tras soltarlo, limita la velocidad y el desplazamiento horizontal a velocidad normal de montura.
+- Conserva completamente el eje Y del salto normal custom.
+- Usa Player#getCurrentInput() como reconciliación por tick además de PlayerInputEvent.
+- Mantiene flying-mount-max-water-depth, trepado, storage, skills y protección de caída.
+- Sin scans, raytraces ni búsquedas de entidades.
