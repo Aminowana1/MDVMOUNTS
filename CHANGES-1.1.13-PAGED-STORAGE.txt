@@ -1,0 +1,12 @@
+MDVMounts 1.1.13 - Paged Invoker Storage
+
+- Added optional per-profile paginated storage through storage.yml `pages`.
+- Legacy `slots` profiles remain fully compatible and unchanged.
+- Paginated profiles require at least 2 pages.
+- Every page except the last must use a 54-slot GUI.
+- The last page may use 9, 18, 27, 36, 45 or 54 slots.
+- Two bottom-corner slots per page are reserved for previous/next navigation.
+- Page switching saves the visible page into the session before opening the next page.
+- All page contents remain stored in the physical invoker minecraft:container component; no SQLite/database added.
+- Capacity reductions still return overflow items to the holder instead of deleting them.
+- Total paginated usable capacity is validated against minecraft:container's 256-entry maximum.

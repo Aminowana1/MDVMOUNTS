@@ -211,6 +211,12 @@ public final class InvokerStorageListener implements Listener {
         }
 
         if (rawSlot >= 0 && rawSlot < topSize
+                && storageManager.handleNavigationClick(player, session, rawSlot)) {
+            event.setCancelled(true);
+            return;
+        }
+
+        if (rawSlot >= 0 && rawSlot < topSize
                 && !storageManager.isUsableTopSlot(session, rawSlot)) {
             event.setCancelled(true);
             return;

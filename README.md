@@ -1,8 +1,8 @@
-# MDVMounts 1.1.8
+# MDVMounts 1.1.13
 
 Controlador ligero de monturas para MDVCRAFT sobre Paper/Purpur 1.21.6+.
 
-La movilidad estable, el almacenamiento por invocador y las habilidades activas se conservan. 1.1.7 añadió trepado tipo araña; 1.1.8 añade protección opcional del jinete contra daño de caída mediante tag.
+La movilidad estable, el almacenamiento por invocador y las habilidades activas se conservan. 1.1.13 añade almacenamiento paginado opcional por perfil, manteniendo compatibilidad con los perfiles clásicos de una sola página.
 
 ## Habilidades de montura por tags
 
@@ -155,7 +155,21 @@ Se mantiene el comportamiento de 1.1.3:
 - tooltip del contenedor oculto;
 - interacción del almacenamiento configurable;
 - `storage.yml` separado;
-- sin SQLite.
+- sin SQLite;
+- paginación opcional por perfil con `pages: [54, 27]`;
+- las páginas reservan 2 slots inferiores para navegación.
+
+Ejemplo paginado:
+
+```yaml
+profiles:
+  bisonte:
+    enabled: true
+    pages: [54, 27]
+    title: '&2Alforjas del Bisonte'
+```
+
+Con paginación, `slots` se ignora para ese perfil. Todas las páginas salvo la última deben ser 54; la última puede ser 9/18/27/36/45/54. La capacidad útil descuenta dos slots por página para las flechas.
 
 ## Autoactualización
 
@@ -182,7 +196,7 @@ mvn clean package
 Resultado:
 
 ```text
-target/MDVMounts-1.1.8.jar
+target/MDVMounts-1.1.13.jar
 ```
 
 

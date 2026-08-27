@@ -40,7 +40,7 @@ public final class MDVMountsPlugin extends JavaPlugin {
 
         mountManager.start();
 
-        getLogger().info("MDVMounts 1.1.12 habilitado. Trepado, agua y protección de caída.");
+        getLogger().info("MDVMounts 1.1.13 habilitado. Almacenamiento paginado, trepado, agua y protección de caída.");
     }
 
     @Override

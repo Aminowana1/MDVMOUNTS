@@ -1,5 +1,5 @@
 # ==========================================================
-# MDVMounts 1.1.3 - ALMACENAMIENTO DE MONTURAS
+# MDVMounts 1.1.13 - ALMACENAMIENTO DE MONTURAS
 # ==========================================================
 #
 # La acción para abrir el almacenamiento se elige en config.yml:
@@ -37,8 +37,28 @@ profiles:
   caravan:
     enabled: true
 
+    # MODO NORMAL (sin paginación):
     # Slots REALES utilizables, de 1 a 54.
     slots: 27
+
+    # MODO PAGINADO (opcional):
+    # Si agregas "pages", esta lista reemplaza a "slots" para ese perfil.
+    # Debe tener al menos 2 páginas.
+    # - Todas las páginas excepto la última deben ser de 54.
+    # - La última puede ser 9, 18, 27, 36, 45 o 54.
+    # - Cada página reserva 2 casillas: esquina inferior izquierda/derecha
+    #   para Página anterior / Página siguiente.
+    #
+    # Ejemplos de capacidad ÚTIL:
+    # pages: [54, 9]      -> 52 + 7  = 59 slots
+    # pages: [54, 27]     -> 52 + 25 = 77 slots
+    # pages: [54, 54]     -> 52 + 52 = 104 slots
+    # pages: [54, 54, 27] -> 52 + 52 + 25 = 129 slots
+    #
+    # minecraft:container admite como máximo 256 entradas; MDVMounts valida
+    # la suma al recargar y omite perfiles paginados inválidos.
+    # pages: [54, 27]
+
     title: '&6Alforjas del Caballo'
     interaction-distance: 3.0
 

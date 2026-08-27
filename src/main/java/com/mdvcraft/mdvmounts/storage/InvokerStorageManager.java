@@ -129,6 +129,10 @@ public final class InvokerStorageManager {
 
             boolean profileEnabled = profileSection.getBoolean("enabled", true);
             int slots = clampSlots(profileSection.getInt("slots", 27));
+            List<Integer> pages = parsePages(key, profileSection.getIntegerList("pages"));
+            if (pages == null) {
+                continue;
+            }
             String title = profileSection.getString("title", "&6Alforjas");
             double interactionDistance = clamp(
                     profileSection.getDouble("interaction-distance", defaultInteractionDistance),
@@ -154,6 +158,7 @@ public final class InvokerStorageManager {
                     key.toLowerCase(),
                     profileEnabled,
                     slots,
+                    pages,
                     title == null ? "&6Alforjas" : title,
                     interactionDistance,
                     material,
@@ -337,9 +342,11 @@ public final class InvokerStorageManager {
         // receiving the contents by mistake. The global UUID scan remains only
         // as a defensive fallback for external plugins that physically move
         // the item while the menu is open.
+        captureCurrentPage(session);
+
         LocatedItem located = findSessionInvoker(player, session);
         if (located != null) {
-            writeContents(located.item(), session.inventory(), session.profile().slots());
+            writeContents(located.item(), session.contents(), session.profile().totalUsableSlots());
             located.writeBack();
         } else {
             // This should not normally happen because listeners prevent moving
@@ -394,7 +401,44 @@ public final class InvokerStorageManager {
     }
 
     public boolean isUsableTopSlot(OpenStorageSession session, int rawSlot) {
-        return rawSlot >= 0 && rawSlot < session.profile().slots();
+        if (session == null || rawSlot < 0 || rawSlot >= session.inventory().getSize()) {
+            return false;
+        }
+
+        InvokerStorageProfile profile = session.profile();
+        if (!profile.paginated()) {
+            return rawSlot < profile.slots();
+        }
+
+        int page = session.currentPage();
+        return rawSlot != profile.previousButtonSlot(page)
+                && rawSlot != profile.nextButtonSlot(page);
+    }
+
+    public boolean handleNavigationClick(Player player, OpenStorageSession session, int rawSlot) {
+        if (player == null || session == null || !session.profile().paginated()) {
+            return false;
+        }
+
+        InvokerStorageProfile profile = session.profile();
+        int currentPage = session.currentPage();
+        if (rawSlot == profile.previousButtonSlot(currentPage)) {
+            if (currentPage > 0) {
+                Bukkit.getScheduler().runTask(plugin,
+                        () -> switchPage(player, session, currentPage - 1));
+            }
+            return true;
+        }
+
+        if (rawSlot == profile.nextButtonSlot(currentPage)) {
+            if (currentPage + 1 < profile.pageCount()) {
+                Bukkit.getScheduler().runTask(plugin,
+                        () -> switchPage(player, session, currentPage + 1));
+            }
+            return true;
+        }
+
+        return false;
     }
 
     private void open(Player player,
@@ -411,27 +455,26 @@ public final class InvokerStorageManager {
             saveOpenSession(player, true);
         }
 
-        int guiSize = guiSize(profile.slots());
-        String title = color(profile.title());
-        Inventory inventory = Bukkit.createInventory(null, guiSize, title);
+        int totalCapacity = profile.totalUsableSlots();
+        List<ItemStack> sessionContents = emptyContents(totalCapacity);
 
         ItemContainerContents stored = item.getData(DataComponentTypes.CONTAINER);
-        List<ItemStack> contents = stored == null ? List.of() : stored.contents();
+        List<ItemStack> storedContents = stored == null ? List.of() : stored.contents();
 
-        int copyCount = Math.min(profile.slots(), contents.size());
+        int copyCount = Math.min(totalCapacity, storedContents.size());
         for (int slot = 0; slot < copyCount; slot++) {
-            ItemStack storedItem = contents.get(slot);
+            ItemStack storedItem = storedContents.get(slot);
             if (storedItem != null && !storedItem.isEmpty()) {
-                inventory.setItem(slot, storedItem.clone());
+                sessionContents.set(slot, storedItem.clone());
             }
         }
 
         // If an admin reduced the configured capacity, never silently delete
         // pre-existing items: return overflow to the current holder.
-        if (contents.size() > profile.slots()) {
+        if (storedContents.size() > totalCapacity) {
             boolean hadOverflow = false;
-            for (int slot = profile.slots(); slot < contents.size(); slot++) {
-                ItemStack overflow = contents.get(slot);
+            for (int slot = totalCapacity; slot < storedContents.size(); slot++) {
+                ItemStack overflow = storedContents.get(slot);
                 if (overflow == null || overflow.isEmpty()) {
                     continue;
                 }
@@ -441,29 +484,154 @@ public final class InvokerStorageManager {
             if (hadOverflow) {
                 // Truncate immediately after returning overflow so a crash
                 // before GUI close cannot duplicate those returned items.
-                writeContents(item, inventory, profile.slots());
+                writeContents(item, sessionContents, totalCapacity);
                 player.getInventory().setItemInMainHand(item);
                 message(player, "messages.storage-overflow",
                         "&eLa capacidad de esta montura fue reducida; los objetos sobrantes fueron devueltos.");
             }
         }
 
-        if (profile.slots() < guiSize) {
-            ItemStack filler = lockedSlotItem();
-            for (int slot = profile.slots(); slot < guiSize; slot++) {
-                inventory.setItem(slot, filler);
-            }
-        }
-
-        storageViewers.put(storageId, player.getUniqueId());
-        openSessions.put(player.getUniqueId(), new OpenStorageSession(
+        Inventory inventory = buildPageInventory(profile, sessionContents, 0);
+        OpenStorageSession session = new OpenStorageSession(
                 player.getUniqueId(),
                 storageId,
                 mountId,
                 profile,
+                sessionContents,
                 inventory,
-                player.getInventory().getHeldItemSlot()));
+                player.getInventory().getHeldItemSlot(),
+                0);
+
+        storageViewers.put(storageId, player.getUniqueId());
+        openSessions.put(player.getUniqueId(), session);
         player.openInventory(inventory);
+    }
+
+    private List<ItemStack> emptyContents(int size) {
+        List<ItemStack> contents = new ArrayList<>(size);
+        for (int slot = 0; slot < size; slot++) {
+            contents.add(ItemStack.empty());
+        }
+        return contents;
+    }
+
+    private Inventory buildPageInventory(InvokerStorageProfile profile,
+                                         List<ItemStack> contents,
+                                         int pageIndex) {
+        int guiSize = profile.pageGuiSize(pageIndex);
+        String title = color(profile.title());
+        if (profile.paginated()) {
+            title += color(" &8[" + (pageIndex + 1) + "/" + profile.pageCount() + "]");
+        }
+
+        Inventory inventory = Bukkit.createInventory(null, guiSize, title);
+
+        if (!profile.paginated()) {
+            int copyCount = Math.min(profile.slots(), contents.size());
+            for (int slot = 0; slot < copyCount; slot++) {
+                ItemStack storedItem = contents.get(slot);
+                if (storedItem != null && !storedItem.isEmpty()) {
+                    inventory.setItem(slot, storedItem.clone());
+                }
+            }
+
+            if (profile.slots() < guiSize) {
+                ItemStack filler = lockedSlotItem();
+                for (int slot = profile.slots(); slot < guiSize; slot++) {
+                    inventory.setItem(slot, filler);
+                }
+            }
+            return inventory;
+        }
+
+        int previousSlot = profile.previousButtonSlot(pageIndex);
+        int nextSlot = profile.nextButtonSlot(pageIndex);
+        int dataIndex = profile.pageDataOffset(pageIndex);
+
+        for (int guiSlot = 0; guiSlot < guiSize; guiSlot++) {
+            if (guiSlot == previousSlot || guiSlot == nextSlot) {
+                continue;
+            }
+            if (dataIndex >= contents.size()) {
+                break;
+            }
+            ItemStack storedItem = contents.get(dataIndex++);
+            if (storedItem != null && !storedItem.isEmpty()) {
+                inventory.setItem(guiSlot, storedItem.clone());
+            }
+        }
+
+        inventory.setItem(previousSlot, navigationArrow(
+                false,
+                pageIndex > 0));
+        inventory.setItem(nextSlot, navigationArrow(
+                true,
+                pageIndex + 1 < profile.pageCount()));
+        return inventory;
+    }
+
+    private void captureCurrentPage(OpenStorageSession session) {
+        if (session == null || session.inventory() == null) {
+            return;
+        }
+
+        InvokerStorageProfile profile = session.profile();
+        Inventory inventory = session.inventory();
+
+        if (!profile.paginated()) {
+            for (int slot = 0; slot < profile.slots(); slot++) {
+                session.contents().set(slot, cloneOrEmpty(inventory.getItem(slot)));
+            }
+            return;
+        }
+
+        int page = session.currentPage();
+        int previousSlot = profile.previousButtonSlot(page);
+        int nextSlot = profile.nextButtonSlot(page);
+        int dataIndex = profile.pageDataOffset(page);
+
+        for (int guiSlot = 0; guiSlot < inventory.getSize(); guiSlot++) {
+            if (guiSlot == previousSlot || guiSlot == nextSlot) {
+                continue;
+            }
+            if (dataIndex >= session.contents().size()) {
+                break;
+            }
+            session.contents().set(dataIndex++, cloneOrEmpty(inventory.getItem(guiSlot)));
+        }
+    }
+
+    private ItemStack cloneOrEmpty(ItemStack item) {
+        return item == null || item.isEmpty() ? ItemStack.empty() : item.clone();
+    }
+
+    private void switchPage(Player player, OpenStorageSession session, int targetPage) {
+        if (targetPage < 0 || targetPage >= session.profile().pageCount()
+                || targetPage == session.currentPage()) {
+            return;
+        }
+
+        captureCurrentPage(session);
+        Inventory nextInventory = buildPageInventory(session.profile(), session.contents(), targetPage);
+
+        // Update the session BEFORE openInventory. Bukkit closes the old view
+        // while opening the next one; the close listener must not persist the
+        // old page as if the whole storage had finished.
+        session.currentPage(targetPage);
+        session.inventory(nextInventory);
+        player.openInventory(nextInventory);
+    }
+
+    private ItemStack navigationArrow(boolean next, boolean enabled) {
+        ItemStack item = new ItemStack(Material.ARROW);
+        ItemMeta meta = item.getItemMeta();
+        if (enabled) {
+            meta.setDisplayName(color(next ? "&ePágina siguiente &7→" : "&7← &ePágina anterior"));
+        } else {
+            meta.setDisplayName(color(next ? "&8No hay página siguiente" : "&8No hay página anterior"));
+        }
+        item.setItemMeta(meta);
+        return item;
     }
 
     private void attemptBinding(UUID playerId, long token, boolean lastAttempt) {
@@ -668,10 +836,10 @@ public final class InvokerStorageManager {
         return parseUuid(meta.getPersistentDataContainer().get(itemStorageIdKey, PersistentDataType.STRING));
     }
 
-    private void writeContents(ItemStack invoker, Inventory inventory, int usableSlots) {
+    private void writeContents(ItemStack invoker, List<ItemStack> source, int usableSlots) {
         List<ItemStack> contents = new ArrayList<>(usableSlots);
         for (int slot = 0; slot < usableSlots; slot++) {
-            ItemStack item = inventory.getItem(slot);
+            ItemStack item = slot < source.size() ? source.get(slot) : null;
             if (item == null || item.isEmpty()) {
                 contents.add(ItemStack.empty());
             } else {
@@ -801,8 +969,57 @@ public final class InvokerStorageManager {
         return ChatColor.translateAlternateColorCodes('&', raw == null ? "" : raw);
     }
 
-    private int guiSize(int usableSlots) {
-        return Math.max(9, Math.min(54, ((usableSlots + 8) / 9) * 9));
+    private List<Integer> parsePages(String profileKey, List<Integer> configuredPages) {
+        if (configuredPages == null || configuredPages.isEmpty()) {
+            return List.of();
+        }
+
+        if (configuredPages.size() < 2) {
+            plugin.getLogger().warning("storage.yml profiles." + profileKey
+                    + ": pages necesita al menos 2 páginas; se usará slots sin paginación.");
+            return List.of();
+        }
+
+        if (configuredPages.size() > 5) {
+            plugin.getLogger().warning("storage.yml profiles." + profileKey
+                    + ": pages admite como máximo 5 páginas por el límite de minecraft:container; perfil omitido.");
+            return null;
+        }
+
+        List<Integer> pages = new ArrayList<>(configuredPages.size());
+        for (int index = 0; index < configuredPages.size(); index++) {
+            Integer raw = configuredPages.get(index);
+            if (raw == null) {
+                plugin.getLogger().warning("storage.yml profiles." + profileKey
+                        + ": pages contiene un valor nulo; perfil omitido.");
+                return null;
+            }
+
+            boolean last = index == configuredPages.size() - 1;
+            if (!last && raw != 54) {
+                plugin.getLogger().warning("storage.yml profiles." + profileKey
+                        + ": toda página excepto la última debe ser 54; perfil omitido.");
+                return null;
+            }
+
+            if (last && (raw < 9 || raw > 54 || raw % 9 != 0)) {
+                plugin.getLogger().warning("storage.yml profiles." + profileKey
+                        + ": la última página debe ser 9, 18, 27, 36, 45 o 54; perfil omitido.");
+                return null;
+            }
+
+            pages.add(raw);
+        }
+
+        int totalUsable = pages.stream().mapToInt(size -> size - 2).sum();
+        if (totalUsable > 256) {
+            plugin.getLogger().warning("storage.yml profiles." + profileKey
+                    + ": la paginación tendría " + totalUsable
+                    + " slots útiles y minecraft:container admite como máximo 256; perfil omitido.");
+            return null;
+        }
+
+        return List.copyOf(pages);
     }
 
     private int clampSlots(int slots) {
