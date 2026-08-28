@@ -37,12 +37,10 @@ public final class MountManager {
     private String climberTag;
     private String riderFallProtectionTag;
 
-
     // Maximum number of consecutive water blocks above the flying mount
     // before the rider is forced to dismount. Cached on reload so movement
     // ticks never read YAML. -1 disables the restriction.
     private int flyingMountMaxWaterDepth;
-
 
     public MountManager(MDVMountsPlugin plugin) {
         this.plugin = plugin;
@@ -82,7 +80,6 @@ public final class MountManager {
         riderFallProtectionTag = plugin.getConfig().getString(
                 "tags.rider-fall-protection",
                 "mdv_mount_rider_fall_protection");
-
 
         // Restored legacy flying-water safety. Read once on reload, never from
         // YAML in the per-tick loop. -1 keeps flying mounts unrestricted.
@@ -227,7 +224,6 @@ public final class MountManager {
         }
     }
 
-
     /**
      * Removes the mount associated with this player when they disconnect.
      *
@@ -369,4 +365,7 @@ public final class MountManager {
         }
     }
 
+    public boolean shouldBlockNativeCamelJumpPacket(UUID uniqueId) {
+        return false;
+    }
 }

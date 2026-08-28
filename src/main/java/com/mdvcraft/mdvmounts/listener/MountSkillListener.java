@@ -1,11 +1,14 @@
 package com.mdvcraft.mdvmounts.listener;
 
 import com.mdvcraft.mdvmounts.skill.MountSkillManager;
+
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDismountEvent;
 import org.bukkit.event.player.PlayerInputEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -17,13 +20,14 @@ import org.bukkit.inventory.EquipmentSlot;
  * Input listener for active mount abilities.
  *
  * Java:
- * - configured control.mount-skills.input
- * - supports ITEM_SWAP in addition to PlayerInputEvent actions.
+ * - Configured control.mount-skills.input
+ * - Supports ITEM_SWAP in addition to PlayerInputEvent actions.
  *
  * Bedrock:
- * - RIGHT_CLICK while mounted, detected through Floodgate/Geyser.
+ * - Attack while mounted, detected through Floodgate/Geyser.
  */
 public final class MountSkillListener implements Listener {
+
     private final MountSkillManager skillManager;
 
     public MountSkillListener(MountSkillManager skillManager) {
@@ -34,12 +38,12 @@ public final class MountSkillListener implements Listener {
     public void onInput(PlayerInputEvent event) {
         Player player = event.getPlayer();
 
-        // Bedrock gets its own dedicated RIGHT_CLICK input.
+        // Bedrock uses Attack for mount abilities.
         if (skillManager.isBedrockPlayer(player)) {
             return;
         }
 
-        skillManager.handleInput(player, event.getInput());
+        skillManager.handleJavaInput(player, event.getInput());
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
@@ -50,7 +54,7 @@ public final class MountSkillListener implements Listener {
             return;
         }
 
-        if (skillManager.handleItemSwap(player)) {
+        if (skillManager.handleJavaItemSwap(player)) {
             // ITEM_SWAP is an ability key on Java, not an actual inventory
             // operation when a mount skill successfully fires.
             event.setCancelled(true);
@@ -58,22 +62,47 @@ public final class MountSkillListener implements Listener {
     }
 
     /**
-     * Handles Bedrock right-click against air or blocks. Entity right-click is
-     * handled inside MountListener before normal mount interaction logic.
+     * Handles Bedrock attack against air or blocks.
      */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
-    public void onBedrockRightClick(PlayerInteractEvent event) {
+    public void onBedrockAttack(PlayerInteractEvent event) {
         if (event.getHand() != EquipmentSlot.HAND) {
             return;
         }
 
         Action action = event.getAction();
-        if (action != Action.RIGHT_CLICK_AIR
-                && action != Action.RIGHT_CLICK_BLOCK) {
+
+        if (action != Action.LEFT_CLICK_AIR
+                && action != Action.LEFT_CLICK_BLOCK) {
             return;
         }
 
-        if (skillManager.handleBedrockRightClick(event.getPlayer())
+        Player player = event.getPlayer();
+
+        if (!skillManager.isBedrockPlayer(player)) {
+            return;
+        }
+
+        if (skillManager.handleBedrockAttack(player)
+                && skillManager.cancelBedrockInteractionOnCast()) {
+            event.setCancelled(true);
+        }
+    }
+
+    /**
+     * Handles Bedrock attack against an entity.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onBedrockEntityAttack(EntityDamageByEntityEvent event) {
+        if (!(event.getDamager() instanceof Player player)) {
+            return;
+        }
+
+        if (!skillManager.isBedrockPlayer(player)) {
+            return;
+        }
+
+        if (skillManager.handleBedrockAttack(player)
                 && skillManager.cancelBedrockInteractionOnCast()) {
             event.setCancelled(true);
         }

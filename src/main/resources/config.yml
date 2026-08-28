@@ -114,8 +114,11 @@ control:
     tag-prefix: mdv_mount_skill_
 
     bedrock:
-      # Click derecho mientras está montado.
-      right-click-enabled: true
+      # Atacar mientras está montado.
+      attack-enabled: true
+
+      # No activa la habilidad si atacó con un arma.
+      attack-weapon-filter: true
 
       # Evita que el mismo toque Bedrock abra/use un bloque o entidad cuando
       # realmente disparó una habilidad.

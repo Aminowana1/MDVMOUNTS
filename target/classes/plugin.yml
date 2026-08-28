@@ -1,9 +1,10 @@
 name: MDVMounts
-version: '1.1.2'
+version: '1.1.16'
 main: com.mdvcraft.mdvmounts.MDVMountsPlugin
 api-version: '1.21.6'
 author: MDVCRAFT
 description: Controlador de monturas por tags para MythicMobs, sin velocidad propia.
+softdepend: [MythicMobs, floodgate, Geyser-Spigot]
 
 commands:
   mdvmounts:

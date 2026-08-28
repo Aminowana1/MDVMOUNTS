@@ -4,7 +4,9 @@ import com.mdvcraft.mdvmounts.MDVMountsPlugin;
 import com.mdvcraft.mdvmounts.mount.MountManager;
 import com.mdvcraft.mdvmounts.mount.MountSession;
 import com.mdvcraft.mdvmounts.skill.MountSkillManager;
-import org.bukkit.ChatColor;
+
+import net.md_5.bungee.api.ChatColor;
+
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
@@ -27,8 +29,8 @@ public final class MountListener implements Listener {
     private final MountSkillManager mountSkillManager;
 
     public MountListener(MDVMountsPlugin plugin,
-                         MountManager mountManager,
-                         MountSkillManager mountSkillManager) {
+            MountManager mountManager,
+            MountSkillManager mountSkillManager) {
         this.plugin = plugin;
         this.mountManager = mountManager;
         this.mountSkillManager = mountSkillManager;
@@ -58,7 +60,7 @@ public final class MountListener implements Listener {
         // Bedrock reserves RIGHT_CLICK as the active mount ability while
         // already riding. Handle it before interpreting the click as an
         // attempt to mount/interact with another entity.
-        if (mountSkillManager.handleBedrockRightClick(player)) {
+        if (mountSkillManager.handleBedrockAttack(player)) {
             if (mountSkillManager.cancelBedrockInteractionOnCast()) {
                 event.setCancelled(true);
             }
@@ -121,7 +123,6 @@ public final class MountListener implements Listener {
         if (!(event.getEntity() instanceof Player player)) {
             return;
         }
-
 
         MountSession session = mountManager.getSession(player);
         if (session == null || !event.getDismounted().getUniqueId().equals(session.mount().getUniqueId())) {
@@ -211,7 +212,6 @@ public final class MountListener implements Listener {
             }
         }
     }
-
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onEntityRemoved(EntityRemoveFromWorldEvent event) {
