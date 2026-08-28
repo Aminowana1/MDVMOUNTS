@@ -64,6 +64,12 @@ control:
   # -1 deshabilita por completo esta restricción.
   flying-mount-max-water-depth: 4
 
+  # Protección de confort del jinete.
+  rider-protection:
+    # Evita sofocación del jugador si una montura grande lo empuja dentro
+    # de un bloque. NO protege a la montura del daño de caída.
+    prevent-suffocation-damage: true
+
   # Acción usada para abrir el almacenamiento del invocador cuando SU
   # montura está invocada y dentro de la distancia configurada.
   # Opciones: LEFT_CLICK, RIGHT_CLICK, SHIFT_LEFT_CLICK, SHIFT_RIGHT_CLICK
@@ -86,15 +92,37 @@ control:
   # al pulsar SPRINT ejecuta la skill MythicMobs TORO_EMBESTIDA con la
   # montura como caster y el jinete como @trigger.
   #
-  # input acepta: SPRINT, JUMP, SNEAK, FORWARD, BACKWARD, LEFT, RIGHT.
-  # Alias: CTRL/CONTROL = SPRINT, SPACE = JUMP, SHIFT = SNEAK,
-  #        W/S/A/D = FORWARD/BACKWARD/LEFT/RIGHT.
-  # SPRINT es la acción de sprint de Minecraft: si el jugador cambia la tecla
-  # en sus controles, MDVMounts sigue la acción, no una tecla física concreta.
+  # JAVA:
+  # input acepta:
+  #   ITEM_SWAP, SPRINT, JUMP, SNEAK, FORWARD, BACKWARD, LEFT, RIGHT
+  #
+  # Alias:
+  #   F / SWAP / SWAP_HANDS / OFFHAND = ITEM_SWAP
+  #   CTRL / CONTROL = SPRINT
+  #   SPACE = JUMP
+  #   SHIFT = SNEAK
+  #   W/S/A/D = FORWARD/BACKWARD/LEFT/RIGHT
+  #
+  # ITEM_SWAP consume el cambio de mano cuando la habilidad se ejecuta.
+  #
+  # BEDROCK:
+  # Si Floodgate/Geyser identifica al jugador como Bedrock, se ignora el
+  # input Java de arriba y la habilidad se activa con CLICK DERECHO.
   mount-skills:
     enabled: true
     input: SPRINT
     tag-prefix: mdv_mount_skill_
+
+    bedrock:
+      # Click derecho mientras está montado.
+      right-click-enabled: true
+
+      # Evita que el mismo toque Bedrock abra/use un bloque o entidad cuando
+      # realmente disparó una habilidad.
+      cancel-interaction-on-cast: true
+
+      # Evita doble disparo cuando un solo toque produce más de un evento.
+      debounce-ticks: 2
 
     # Usa yaw + pitch de la cámara del jinete al lanzar la skill.
     # Esto permite disparar proyectiles hacia arriba/abajo desde monturas
@@ -125,6 +153,11 @@ control:
     enabled: true
     vertical-speed: 0.22
     probe-distance: 0.12
+
+    # Impide que una montura trepadora suba dentro de un techo sólido.
+    ceiling-check:
+      enabled: true
+      blocks: 3
 
   # Porcentajes de movimiento horizontal por controlador.
   # 100 = MovementSpeed completo; 50 = mitad; 25 = un cuarto.

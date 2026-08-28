@@ -54,6 +54,17 @@ public final class MountListener implements Listener {
         }
 
         Player player = event.getPlayer();
+
+        // Bedrock reserves RIGHT_CLICK as the active mount ability while
+        // already riding. Handle it before interpreting the click as an
+        // attempt to mount/interact with another entity.
+        if (mountSkillManager.handleBedrockRightClick(player)) {
+            if (mountSkillManager.cancelBedrockInteractionOnCast()) {
+                event.setCancelled(true);
+            }
+            return;
+        }
+
         Entity clicked = event.getRightClicked();
 
         if (!mountManager.isMountCandidate(clicked)) {
@@ -140,6 +151,29 @@ public final class MountListener implements Listener {
         }
 
         event.setCancelled(true);
+    }
+
+    /**
+     * Optional comfort protection imported from the feature branch: prevent
+     * the rider from taking suffocation damage caused by a large/tall mount
+     * pushing the camera into blocks. This does not alter mount fall damage.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onRiderSuffocationDamage(EntityDamageEvent event) {
+        if (event.getCause() != EntityDamageEvent.DamageCause.SUFFOCATION
+                || !(event.getEntity() instanceof Player player)) {
+            return;
+        }
+
+        if (!plugin.getConfig().getBoolean(
+                "control.rider-protection.prevent-suffocation-damage",
+                true)) {
+            return;
+        }
+
+        if (mountManager.getSession(player) != null) {
+            event.setCancelled(true);
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)

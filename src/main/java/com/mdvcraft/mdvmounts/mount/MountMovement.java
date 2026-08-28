@@ -43,6 +43,8 @@ public final class MountMovement {
   private boolean wallClimbingEnabled;
   private double wallClimbVerticalSpeed;
   private double wallClimbProbeDistance;
+  private boolean ceilingCheckEnabled;
+  private int ceilingCheckBlocks;
 
   // One tiny fixed array per setting: no HashMap lookup and no YAML read in
   // the movement loop. Values are loaded only on /mdvmounts reload.
@@ -107,6 +109,14 @@ public final class MountMovement {
     wallClimbProbeDistance = Math.max(0.01D, plugin.getConfig().getDouble(
         "control.wall-climbing.probe-distance",
         0.12D));
+
+    ceilingCheckEnabled = plugin.getConfig().getBoolean(
+        "control.wall-climbing.ceiling-check.enabled",
+        true);
+
+    ceilingCheckBlocks = Math.max(1, plugin.getConfig().getInt(
+        "control.wall-climbing.ceiling-check.blocks",
+        3));
 
     loadMovementProfiles();
 
@@ -339,9 +349,16 @@ public final class MountMovement {
     if (wantsJump && mount.isOnGround()) {
       velocity.setY(session.cachedJumpStrength());
     } else if (climbWall) {
-      velocity.setY(Math.max(velocity.getY(), wallClimbVerticalSpeed));
-      if (mount.getFallDistance() != 0.0F) {
-        mount.setFallDistance(0.0F);
+      if (canClimbUp(mount)) {
+        velocity.setY(Math.max(
+            velocity.getY(),
+            wallClimbVerticalSpeed));
+
+        if (mount.getFallDistance() != 0.0F) {
+          mount.setFallDistance(0.0F);
+        }
+      } else {
+        velocity.setY(0.0D);
       }
     }
 
@@ -423,6 +440,40 @@ public final class MountMovement {
     // source of the delayed/heavy feeling.
     mount.setVelocity(new Vector(x, targetY, z));
     session.setManualInputActive(true);
+  }
+
+  /**
+   * Stops climbers from pushing upward into a solid ceiling. Only tagged
+   * climbers pay this tiny block-check cost, and only while actively trying
+   * to climb a wall.
+   */
+  private boolean canClimbUp(LivingEntity mount) {
+    if (!ceilingCheckEnabled) {
+      return true;
+    }
+
+    BoundingBox box = mount.getBoundingBox();
+    World world = mount.getWorld();
+
+    int blockXMin = floorToBlock(box.getMinX());
+    int blockXMax = floorToBlock(box.getMaxX() - 1.0E-6D);
+
+    int blockZMin = floorToBlock(box.getMinZ());
+    int blockZMax = floorToBlock(box.getMaxZ() - 1.0E-6D);
+
+    int baseY = floorToBlock(box.getMaxY());
+
+    for (int y = baseY; y < baseY + ceilingCheckBlocks; y++) {
+      for (int x = blockXMin; x <= blockXMax; x++) {
+        for (int z = blockZMin; z <= blockZMax; z++) {
+          if (isBlocked(world, x, y, z)) {
+            return false;
+          }
+        }
+      }
+    }
+
+    return true;
   }
 
   /**

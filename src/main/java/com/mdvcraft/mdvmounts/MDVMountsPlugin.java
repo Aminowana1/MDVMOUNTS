@@ -40,7 +40,7 @@ public final class MDVMountsPlugin extends JavaPlugin {
 
         mountManager.start();
 
-        getLogger().info("MDVMounts 1.1.15 habilitado. Caídas vanilla restauradas y limpieza de montura al desconectarse.");
+        getLogger().info("MDVMounts 1.1.16 habilitado. Caídas correctas, logout seguro, ITEM_SWAP y controles Bedrock.");
     }
 
     @Override

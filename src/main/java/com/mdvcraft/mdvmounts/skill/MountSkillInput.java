@@ -11,6 +11,17 @@ import java.util.Locale;
  * default on many clients).
  */
 public enum MountSkillInput {
+    /**
+     * Event-driven hand swap (normally F on Java). This input is not exposed by
+     * Paper's Input object, so MountSkillListener handles it through
+     * PlayerSwapHandItemsEvent.
+     */
+    ITEM_SWAP {
+        @Override
+        public boolean isPressed(Input input) {
+            return false;
+        }
+    },
     SPRINT {
         @Override
         public boolean isPressed(Input input) {
@@ -67,6 +78,7 @@ public enum MountSkillInput {
 
         return switch (normalized) {
             // Friendly aliases for the default Minecraft bindings.
+            case "F", "SWAP", "SWAP_HANDS", "OFFHAND", "ITEMSWAP" -> ITEM_SWAP;
             case "CTRL", "CONTROL" -> SPRINT;
             case "SPACE", "ESPACIO" -> JUMP;
             case "SHIFT", "CROUCH" -> SNEAK;
