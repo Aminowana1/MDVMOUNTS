@@ -20,6 +20,10 @@ public final class MountManager {
     private final MDVMountsPlugin plugin;
     private final MountMovement movement;
     private final Map<UUID, MountSession> sessions = new HashMap<>();
+    // Last MDV mount positively associated with a player by this controller.
+    // Kept after a natural dismount so logout cleanup can also remove a nearby
+    // mount the player had just been using, without scanning the world.
+    private final Map<UUID, UUID> knownMounts = new HashMap<>();
 
     private BukkitTask tickTask;
 
@@ -63,6 +67,7 @@ public final class MountManager {
             forceDismount(session.player());
         }
         sessions.clear();
+        knownMounts.clear();
     }
 
     public void reloadSettings() {
@@ -195,6 +200,7 @@ public final class MountManager {
                 typeOptional.get() == MountType.GROUND
                         && mount.getScoreboardTags().contains(climberTag));
         sessions.put(player.getUniqueId(), session);
+        knownMounts.put(player.getUniqueId(), mount.getUniqueId());
         prepareForControl(session);
         return true;
     }
@@ -219,6 +225,65 @@ public final class MountManager {
             // desmontaje no interceptará este desmontaje programático.
             player.leaveVehicle();
         }
+    }
+
+
+    /**
+     * Removes the mount associated with this player when they disconnect.
+     *
+     * The active session is the strongest source. If the player dismounted
+     * shortly before quitting, knownMounts still points to the exact entity UUID,
+     * so no nearby/global entity scan is required.
+     *
+     * @return true only when a real MDV mount entity was found and removed.
+     */
+    public boolean removeMountOnLogout(Player player) {
+        if (player == null) {
+            return false;
+        }
+
+        UUID playerId = player.getUniqueId();
+        MountSession session = sessions.remove(playerId);
+        LivingEntity mount = session == null ? null : session.mount();
+
+        if (session != null) {
+            restoreAfterControl(session);
+        }
+
+        if (mount == null || !mount.isValid() || mount.isDead()) {
+            UUID knownMountId = knownMounts.get(playerId);
+            Entity known = knownMountId == null ? null : Bukkit.getEntity(knownMountId);
+            if (known instanceof LivingEntity living
+                    && living.isValid()
+                    && !living.isDead()
+                    && isMountCandidate(living)) {
+                mount = living;
+            }
+        }
+
+        knownMounts.remove(playerId);
+
+        if (mount == null || !mount.isValid() || mount.isDead()) {
+            return false;
+        }
+
+        // Session is already gone, so any dismount event caused by eject/remove
+        // cannot recursively clean the same session.
+        mount.eject();
+        mount.remove();
+        return true;
+    }
+
+    /**
+     * Drops stale logout ownership when a mount dies or is removed by another
+     * system (MythicMobs timeout, distance cleanup, admin removal, etc.).
+     */
+    public void forgetMount(Entity entity) {
+        if (entity == null || knownMounts.isEmpty()) {
+            return;
+        }
+        UUID mountId = entity.getUniqueId();
+        knownMounts.entrySet().removeIf(entry -> mountId.equals(entry.getValue()));
     }
 
     /**
@@ -284,6 +349,7 @@ public final class MountManager {
                     || vehicle == null
                     || !vehicle.getUniqueId().equals(mount.getUniqueId())) {
                 iterator.remove();
+                knownMounts.remove(player.getUniqueId(), mount.getUniqueId());
                 restoreAfterControl(session);
                 continue;
             }

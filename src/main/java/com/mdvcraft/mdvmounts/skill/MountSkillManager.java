@@ -144,6 +144,18 @@ public final class MountSkillManager {
         return before.distanceSquared(after) > 1.0E-6D;
     }
 
+    /**
+     * Casts a configured utility skill with the player as both caster and
+     * trigger. Used for logout cooldowns so the existing MythicMobs variable
+     * system remains the single source of truth for summon cooldowns.
+     */
+    public boolean castPlayerSkill(Player player, String skillName) {
+        if (player == null || skillName == null || skillName.isBlank()) {
+            return false;
+        }
+        return mythicBridge.cast(player, player, skillName.trim(), player.getLocation());
+    }
+
     public void clear(Player player) {
         if (player != null) {
             pressedStates.remove(player.getUniqueId());

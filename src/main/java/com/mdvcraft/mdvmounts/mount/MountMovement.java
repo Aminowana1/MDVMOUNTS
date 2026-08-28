@@ -118,11 +118,13 @@ public final class MountMovement {
           continue;
         }
 
+        // Never use setAware(false) for ridden mounts. Paper explicitly notes
+        // that unaware mobs may lose behaviours beyond pathfinding (for example
+        // environmental/living behaviour). Keeping awareness intact lets
+        // Minecraft accumulate and apply normal fall damage to the mount.
+        mob.setAware(session.originalAware());
         if (pauseVanillaAi) {
           mob.getPathfinder().stopPathfinding();
-          mob.setAware(false);
-        } else {
-          mob.setAware(session.originalAware());
         }
       }
     }
@@ -146,8 +148,14 @@ public final class MountMovement {
     LivingEntity mount = session.mount();
 
     if (pauseVanillaAi && mount instanceof Mob mob) {
+      // Stop navigation without disabling the mob itself. setAware(false)
+      // suppresses more than pathfinding on Paper and was preventing the
+      // normal living-entity fall behaviour on controlled mounts.
       mob.getPathfinder().stopPathfinding();
-      mob.setAware(false);
+      if (session.originalAware() != null
+          && mob.isAware() != session.originalAware()) {
+        mob.setAware(session.originalAware());
+      }
     }
 
     if (session.type() == MountType.GROUND && groundHorseFeelEnabled) {
@@ -187,6 +195,13 @@ public final class MountMovement {
 
     if (session.shouldRefreshAttributes()) {
       refreshNativeAttributes(session);
+    }
+
+    // Keep vanilla navigation paused without disabling Mob awareness. This is
+    // intentionally cheap (one stop call per ridden Mob per tick) and preserves
+    // physics/environmental behaviour such as fall damage.
+    if (pauseVanillaAi && mount instanceof Mob mob) {
+      mob.getPathfinder().stopPathfinding();
     }
 
     // MythicMobs movement mechanics (for example lunge/dash) set their own

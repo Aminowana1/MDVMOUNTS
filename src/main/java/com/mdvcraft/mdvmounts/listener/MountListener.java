@@ -3,6 +3,7 @@ package com.mdvcraft.mdvmounts.listener;
 import com.mdvcraft.mdvmounts.MDVMountsPlugin;
 import com.mdvcraft.mdvmounts.mount.MountManager;
 import com.mdvcraft.mdvmounts.mount.MountSession;
+import com.mdvcraft.mdvmounts.skill.MountSkillManager;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
@@ -13,6 +14,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityDismountEvent;
+import io.papermc.paper.event.entity.EntityRemoveFromWorldEvent;
 import org.bukkit.event.player.PlayerInputEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
@@ -22,11 +24,14 @@ import org.bukkit.inventory.EquipmentSlot;
 public final class MountListener implements Listener {
     private final MDVMountsPlugin plugin;
     private final MountManager mountManager;
+    private final MountSkillManager mountSkillManager;
 
     public MountListener(MDVMountsPlugin plugin,
-                         MountManager mountManager) {
+                         MountManager mountManager,
+                         MountSkillManager mountSkillManager) {
         this.plugin = plugin;
         this.mountManager = mountManager;
+        this.mountSkillManager = mountSkillManager;
     }
 
     // Las monturas MDV se identifican por tags, así que procesamos también
@@ -137,19 +142,45 @@ public final class MountListener implements Listener {
         event.setCancelled(true);
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onQuit(PlayerQuitEvent event) {
-        mountManager.forceDismount(event.getPlayer());
+        Player player = event.getPlayer();
+
+        // Remove the exact mount MDVMounts associated with this player. This is
+        // event-driven and happens before the player's chunk can unload, so the
+        // mount cannot be left frozen in an unloaded chunk.
+        boolean removedMount = mountManager.removeMountOnLogout(player);
+
+        if (removedMount && plugin.getConfig().getBoolean("control.logout.apply-cooldown", true)) {
+            String skillName = plugin.getConfig().getString(
+                    "control.logout.cooldown-skill",
+                    "MDV_MOUNT_APLICAR_COOLDOWN_30S");
+
+            if (!mountSkillManager.castPlayerSkill(player, skillName)) {
+                plugin.getLogger().warning(
+                        "Se eliminó la montura de " + player.getName()
+                                + " al desconectarse, pero no se pudo ejecutar la skill de cooldown '"
+                                + skillName + "'.");
+            }
+        }
+
+        mountSkillManager.clear(player);
     }
 
     @EventHandler
     public void onEntityDeath(EntityDeathEvent event) {
         Entity dead = event.getEntity();
+        mountManager.forgetMount(dead);
         for (Entity passenger : dead.getPassengers()) {
             if (passenger instanceof Player player && mountManager.getSession(player) != null) {
                 mountManager.forceDismount(player);
             }
         }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onEntityRemoved(EntityRemoveFromWorldEvent event) {
+        mountManager.forgetMount(event.getEntity());
     }
 
     private void message(Player player, String path, String fallback) {

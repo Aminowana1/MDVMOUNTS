@@ -6,7 +6,7 @@
 
     <groupId>com.mdvcraft</groupId>
     <artifactId>mdvmounts</artifactId>
-    <version>1.1.13</version>
+    <version>1.1.14</version>
     <name>MDVMounts</name>
     <description>Tag-driven mount controller for MDVCRAFT.</description>
 
@@ -48,16 +48,6 @@
                 <version>3.13.0</version>
                 <configuration>
                     <release>${maven.compiler.release}</release>
-
-                    <!--
-                      Protección de compatibilidad:
-                      si un repositorio viejo todavía conserva por accidente
-                      ProtocolLibCamelJumpBlocker.java, Maven no lo compila.
-                      La clase ya no forma parte de MDVMounts.
-                    -->
-                    <excludes>
-                        <exclude>**/ProtocolLibCamelJumpBlocker.java</exclude>
-                    </excludes>
                 </configuration>
             </plugin>
             <plugin>

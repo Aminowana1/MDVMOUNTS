@@ -28,7 +28,7 @@ public final class MDVMountsPlugin extends JavaPlugin {
         mountSkillManager = new MountSkillManager(this, mountManager);
 
         getServer().getPluginManager().registerEvents(new InvokerStorageListener(storageManager), this);
-        getServer().getPluginManager().registerEvents(new MountListener(this, mountManager), this);
+        getServer().getPluginManager().registerEvents(new MountListener(this, mountManager, mountSkillManager), this);
         getServer().getPluginManager().registerEvents(new MountSkillListener(mountSkillManager), this);
 
         PluginCommand command = getCommand("mdvmounts");
@@ -40,7 +40,7 @@ public final class MDVMountsPlugin extends JavaPlugin {
 
         mountManager.start();
 
-        getLogger().info("MDVMounts 1.1.13 habilitado. Almacenamiento paginado, trepado, agua y protección de caída.");
+        getLogger().info("MDVMounts 1.1.14 habilitado. Caídas vanilla restauradas y limpieza de montura al desconectarse.");
     }
 
     @Override

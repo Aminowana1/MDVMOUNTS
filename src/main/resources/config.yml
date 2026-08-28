@@ -1,5 +1,5 @@
 # ==========================================================
-# MDVMounts 1.1.13
+# MDVMounts 1.1.14
 # Controlador ligero de monturas para MDVCRAFT.
 # ==========================================================
 #
@@ -39,8 +39,21 @@ tags:
   rider-fall-protection: mdv_mount_rider_fall_protection
 
 control:
-  # Pausa la IA/pathfinding vanilla mientras el jugador conduce una montura.
+  # Detiene el pathfinding vanilla mientras el jugador conduce una montura.
+  # IMPORTANTE: desde 1.1.14 NO usa Mob#setAware(false), porque eso puede
+  # desactivar comportamiento físico/ambiental de la entidad, incluido el
+  # procesamiento normal de caídas en algunos mobs. La montura conserva su
+  # daño FALL vanilla y sus atributos FALL_DAMAGE_MULTIPLIER.
   pause-vanilla-ai-while-ridden: true
+
+  # Al desconectarse el jugador, elimina la última montura que MDVMounts tenía
+  # asociada con él (incluye una montura de la que se desmontó recientemente).
+  # El cooldown se aplica reutilizando tu skill MythicMobs existente; en tu
+  # configuración actual esa skill ya dura 2 minutos aunque conserve el nombre
+  # histórico _30S por compatibilidad.
+  logout:
+    apply-cooldown: true
+    cooldown-skill: MDV_MOUNT_APLICAR_COOLDOWN_30S
 
   # La entidad gira con la cámara del jinete.
   rotate-mount-with-rider: true

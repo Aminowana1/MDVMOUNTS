@@ -1,0 +1,17 @@
+MDVMounts 1.1.14
+================
+
+- Corrige el daño por caída de las monturas controladas:
+  - deja de usar Mob#setAware(false) mientras están montadas;
+  - detiene únicamente el pathfinding vanilla;
+  - la montura vuelve a conservar su daño FALL normal y respeta
+    FALL_DAMAGE_MULTIPLIER de MythicMobs/Minecraft.
+- mdv_mount_rider_fall_protection continúa cancelando SOLO el daño FALL
+  del pasajero; nunca cancela el daño de la propia montura.
+- Al desconectarse un jugador, MDVMounts elimina inmediatamente la montura
+  exacta asociada a él antes de que el chunk pueda descargarse.
+- El logout ejecuta por defecto la skill MythicMobs
+  MDV_MOUNT_APLICAR_COOLDOWN_30S. En la configuración MDVCRAFT actual esa
+  skill conserva el nombre histórico, pero aplica 2 minutos de cooldown.
+- Se recuerda el UUID de la última montura controlada tras un desmontaje para
+  poder limpiarla al salir sin hacer scans globales o búsquedas por cercanía.
