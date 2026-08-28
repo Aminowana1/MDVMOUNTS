@@ -6,7 +6,7 @@
 
     <groupId>com.mdvcraft</groupId>
     <artifactId>mdvmounts</artifactId>
-    <version>1.1.14</version>
+    <version>1.1.15</version>
     <name>MDVMounts</name>
     <description>Tag-driven mount controller for MDVCRAFT.</description>
 
@@ -48,6 +48,15 @@
                 <version>3.13.0</version>
                 <configuration>
                     <release>${maven.compiler.release}</release>
+                    <!--
+                      Compatibilidad con repositorios actualizados por merge:
+                      versiones antiguas podían dejar este source obsoleto de
+                      ProtocolLib. La mecánica camel-normal-jump fue eliminada,
+                      por lo que nunca debe formar parte del build actual.
+                    -->
+                    <excludes>
+                        <exclude>**/compat/ProtocolLibCamelJumpBlocker.java</exclude>
+                    </excludes>
                 </configuration>
             </plugin>
             <plugin>

@@ -345,7 +345,7 @@ public final class MountMovement {
       }
     }
 
-    mount.setVelocity(velocity);
+    setGroundVelocityPreservingFallDistance(mount, velocity);
     session.setManualInputActive(true);
   }
 
@@ -476,6 +476,21 @@ public final class MountMovement {
     double z = ( cos * forwardInput + sin * strafeInput) * speed;
 
     return new Vector(x, 0.0D, z);
+  }
+
+  /**
+   * Manual GROUND steering writes X/Z velocity while the entity can still be
+   * airborne. Preserve Minecraft's accumulated fall distance across that write
+   * so landing damage remains entirely vanilla and FALL_DAMAGE_MULTIPLIER can
+   * do its normal job. Climber code deliberately resets fallDistance before
+   * reaching this helper, so wall-climb immunity remains unchanged.
+   */
+  private void setGroundVelocityPreservingFallDistance(LivingEntity mount, Vector velocity) {
+    float fallDistance = mount.getFallDistance();
+    mount.setVelocity(velocity);
+    if (fallDistance > 0.0F && mount.getFallDistance() < fallDistance) {
+      mount.setFallDistance(fallDistance);
+    }
   }
 
   /**

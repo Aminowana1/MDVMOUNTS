@@ -1,0 +1,14 @@
+MDVMounts 1.1.15
+================
+
+- Corrige el build contra Paper 1.21.6:
+  - elimina el uso de EntityRemoveFromWorldEvent, que no está disponible en
+    la API mínima usada por el workflow;
+  - excluye del compilador el source obsoleto ProtocolLibCamelJumpBlocker.java
+    si quedó en GitHub por una actualización/merge de archivos.
+- La mecánica camel-normal-jump sigue completamente eliminada.
+- Refuerza el arreglo de daño por caída preservando fallDistance cuando el
+  controlador terrestre escribe velocidad horizontal en el aire.
+- mdv_mount_rider_fall_protection continúa protegiendo únicamente al pasajero.
+- Mantiene la eliminación inmediata de la montura y aplicación de cooldown al
+  PlayerQuitEvent.

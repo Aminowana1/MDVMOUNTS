@@ -14,7 +14,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityDismountEvent;
-import io.papermc.paper.event.entity.EntityRemoveFromWorldEvent;
+import com.destroystokyo.paper.event.entity.EntityRemoveFromWorldEvent;
 import org.bukkit.event.player.PlayerInputEvent;
 import org.bukkit.event.player.PlayerInteractAtEntityEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
@@ -177,6 +177,7 @@ public final class MountListener implements Listener {
             }
         }
     }
+
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onEntityRemoved(EntityRemoveFromWorldEvent event) {
