@@ -1,16 +1,18 @@
 # ==========================================================
-# MDVMounts 1.1.1
+# MDVMounts 1.1.14
 # Controlador ligero de monturas para MDVCRAFT.
 # ==========================================================
 #
-# Este archivo contiene SOLO movilidad y mensajes generales.
+# Este archivo contiene movilidad, controles y mensajes generales.
 # Los inventarios por invocador viven en storage.yml.
 #
 # Las configs se auto-actualizan: al iniciar o ejecutar /mdvmounts reload,
 # las claves nuevas se agregan sin reemplazar tus valores existentes.
 #
 # Rendimiento:
-# - Sin raytraces ni búsquedas de bloques por tick.
+# - Las monturas normales no hacen raytraces ni búsquedas de bloques por tick.
+# - Solo una montura con mdv_mount_climber hace 1-2 comprobaciones de bloque
+#   mientras el jinete intenta moverse contra una pared.
 # - MOVEMENT_SPEED y JUMP_STRENGTH se cachean.
 # - STEP_HEIGHT se aplica una vez al montar y Minecraft resuelve los escalones.
 # - Los cambios de input pueden aplicarse inmediatamente con PlayerInputEvent.
@@ -25,23 +27,147 @@ tags:
   lava: mdv_mount_lava
   jumper: mdv_mount_jumper
 
+  # Añadir junto a mdv_mount + mdv_mount_ground para permitir trepar
+  # paredes altas como una araña, manteniendo STEP_HEIGHT=1 para escalones.
+  climber: mdv_mount_climber
+
+
+  # Protección de caída para el/los pasajeros.
+  # Solo se consulta cuando Bukkit ya está procesando daño FALL de un jugador:
+  # no crea timers, scans ni trabajo por tick. La montura conserva su propio
+  # daño de caída normal.
+  rider-fall-protection: mdv_mount_rider_fall_protection
+
 control:
-  # Pausa la IA/pathfinding vanilla mientras el jugador conduce una montura.
+  # Detiene el pathfinding vanilla mientras el jugador conduce una montura.
+  # IMPORTANTE: desde 1.1.14 NO usa Mob#setAware(false), porque eso puede
+  # desactivar comportamiento físico/ambiental de la entidad, incluido el
+  # procesamiento normal de caídas en algunos mobs. La montura conserva su
+  # daño FALL vanilla y sus atributos FALL_DAMAGE_MULTIPLIER.
   pause-vanilla-ai-while-ridden: true
+
+  # Al desconectarse el jugador, elimina la última montura que MDVMounts tenía
+  # asociada con él (incluye una montura de la que se desmontó recientemente).
+  # El cooldown se aplica reutilizando tu skill MythicMobs existente; en tu
+  # configuración actual esa skill ya dura 2 minutos aunque conserve el nombre
+  # histórico _30S por compatibilidad.
+  logout:
+    apply-cooldown: true
+    cooldown-skill: MDV_MOUNT_APLICAR_COOLDOWN_30S
 
   # La entidad gira con la cámara del jinete.
   rotate-mount-with-rider: true
 
-  # Profundidad máxima que una montura voladora puede alcanzar dentro del agua.
-  # La montura se desmontará al superar esta profundidad.
-  # Usar -1 para deshabilitar esta restricción.
+  # Máxima rotación visual en grados cuando una montura de movilidad libre se mueve de forma vertical.
+  # Va desde 0 hasta 90.
+  mount-rotation-max-pitch: 45.0
+
+  # Profundidad máxima que una montura FLYING puede tolerar bajo el agua.
+  # Al alcanzar esta profundidad, el jinete se desmonta automáticamente.
+  # Solo se comprueba en monturas voladoras que YA están dentro del agua.
+  # -1 deshabilita por completo esta restricción.
   flying-mount-max-water-depth: 4
+
+  # Protección de confort del jinete.
+  rider-protection:
+    # Evita que una montura grande meta al jugador
+    # dentro de un bloque y reciba daño por sofocación.
+    prevent-suffocation-damage: true
+
+    # Siempre bloquear el daño por caída al jugador cuando usa una montura.
+    enforce-prevent-fall-damage: false
+
+  # Acción usada para abrir el almacenamiento del invocador cuando SU
+  # montura está invocada y dentro de la distancia configurada.
+  # Opciones: LEFT_CLICK, RIGHT_CLICK, SHIFT_LEFT_CLICK, SHIFT_RIGHT_CLICK
+  # LEFT_CLICK conserva el comportamiento actual.
+  storage-open-interaction: LEFT_CLICK
+
+  # Acción que Crucible/MythicMobs usa para INVOCAR la montura.
+  # Esta opción NO ejecuta la invocación: solo le dice a MDVMounts cuándo
+  # preparar el enlace entre el ItemStack físico y la entidad recién creada.
+  #
+  # Opciones: AUTO, LEFT_CLICK, RIGHT_CLICK, SHIFT_LEFT_CLICK, SHIFT_RIGHT_CLICK
+  # AUTO (recomendado) escucha cualquier combinación y solo enlaza si realmente
+  # aparece una montura nueva compatible. Así puedes cambiar ~onUse/~onSwing
+  # en Crucible sin volver a tocar esta config.
+  storage-invocation-interaction: AUTO
+
+  # Habilidad activa de la montura.
+  # La skill se toma de un scoreboard tag del mob. Ejemplo:
+  #   mdv_mount_skill_TORO_EMBESTIDA
+  # al pulsar SPRINT ejecuta la skill MythicMobs TORO_EMBESTIDA con la
+  # montura como caster y el jinete como @trigger.
+  #
+  # JAVA:
+  # input acepta:
+  #   ITEM_SWAP, SPRINT, JUMP, SNEAK, FORWARD, BACKWARD, LEFT, RIGHT
+  #
+  # Alias:
+  #   F / SWAP / SWAP_HANDS / OFFHAND = ITEM_SWAP
+  #   CTRL / CONTROL = SPRINT
+  #   SPACE = JUMP
+  #   SHIFT = SNEAK
+  #   W/S/A/D = FORWARD/BACKWARD/LEFT/RIGHT
+  #
+  # ITEM_SWAP consume el cambio de mano cuando la habilidad se ejecuta.
+  #
+  # BEDROCK:
+  # Si Floodgate/Geyser identifica al jugador como Bedrock, se ignora el
+  # input Java de arriba y la habilidad se activa con CLICK DERECHO.
+  mount-skills:
+    enabled: true
+    input: SPRINT
+    tag-prefix: mdv_mount_skill_
+
+    bedrock:
+      # Atacar mientras está montado.
+      attack-enabled: true
+
+      # No activa la habilidad si atacó con un arma.
+      attack-weapon-filter: true
+
+      # Evita que el mismo toque Bedrock abra/use un bloque o entidad cuando
+      # realmente disparó una habilidad.
+      cancel-interaction-on-cast: true
+
+      # Evita doble disparo cuando un solo toque produce más de un evento.
+      debounce-ticks: 2
+
+    # Usa yaw + pitch de la cámara del jinete al lanzar la skill.
+    # Esto permite disparar proyectiles hacia arriba/abajo desde monturas
+    # voladoras o acuáticas usando @Forward{lockpitch=false}.
+    use-rider-look-direction: true
+
+    # Durante cuántos ticks se mantiene sincronizado el pitch del caster con
+    # la cámara del jinete. Útil para skills con pulsos/delays cortos.
+    rider-look-sync-ticks: 10
+
+    # Si MythicMobs cambia la velocidad de la montura al castear (lunge/dash),
+    # MDVMounts no pisa esa velocidad con WASD durante esta ventana.
+    # 8 ticks = 0.4 segundos.
+    preserve-skill-velocity-ticks: 8
+
 
   # Sensación tipo caballo para TODAS las monturas GROUND.
   # Usa STEP_HEIGHT nativo: no busca bloques ni hace raytraces.
   ground-horse-feel:
     enabled: true
     step-height: 1.0
+
+  # Trepado tipo araña para GROUND + tags.climber.
+  # Un escalón de 1 bloque sigue resolviéndose con STEP_HEIGHT.
+  # En una pared de 2+ bloques, mientras el jinete empuje hacia ella,
+  # la montura gana velocidad vertical hasta superar el borde.
+  wall-climbing:
+    enabled: true
+    vertical-speed: 0.22
+    probe-distance: 0.12
+
+    # Impide que una montura trepadora suba dentro de un techo sólido.
+    ceiling-check:
+      enabled: true
+      blocks: 3
 
   # Porcentajes de movimiento horizontal por controlador.
   # 100 = MovementSpeed completo; 50 = mitad; 25 = un cuarto.

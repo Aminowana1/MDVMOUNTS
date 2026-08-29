@@ -1,15 +1,16 @@
 # ==========================================================
-# MDVMounts 1.1.2 - ALMACENAMIENTO DE MONTURAS
+# MDVMounts 1.1.13 - ALMACENAMIENTO DE MONTURAS
 # ==========================================================
 #
-# CLICK IZQUIERDO con el invocador:
-#   abre el almacenamiento si SU montura está invocada y cerca.
+# La acción para abrir el almacenamiento se elige en config.yml:
+#   control.storage-open-interaction
 #
-# CLICK DERECHO:
-#   MDVMounts no abre el almacenamiento. Crucible/MythicMobs puede usarlo
-#   normalmente para invocar la montura y MDVMounts la enlaza después.
+# Por defecto sigue siendo LEFT_CLICK. El click derecho que no sea consumido
+# por una apertura continúa disponible para Crucible/MythicMobs y el enlace.
 #
 # Cada ItemStack físico tiene su propio minecraft:container.
+# MDVMounts oculta el componente CONTAINER del tooltip para que Minecraft no
+# muestre la lista de objetos almacenados sobre el lore del silbato.
 # El UUID de enlace se renueva en cada invocación exitosa para evitar que
 # dos copias físicas de un invocador compartan accidentalmente identidad.
 # Si el silbato cambia de dueño, sus objetos viajan con él.
@@ -36,8 +37,28 @@ profiles:
   caravan:
     enabled: true
 
+    # MODO NORMAL (sin paginación):
     # Slots REALES utilizables, de 1 a 54.
     slots: 27
+
+    # MODO PAGINADO (opcional):
+    # Si agregas "pages", esta lista reemplaza a "slots" para ese perfil.
+    # Debe tener al menos 2 páginas.
+    # - Todas las páginas excepto la última deben ser de 54.
+    # - La última puede ser 9, 18, 27, 36, 45 o 54.
+    # - Cada página reserva 2 casillas: esquina inferior izquierda/derecha
+    #   para Página anterior / Página siguiente.
+    #
+    # Ejemplos de capacidad ÚTIL:
+    # pages: [54, 9]      -> 52 + 7  = 59 slots
+    # pages: [54, 27]     -> 52 + 25 = 77 slots
+    # pages: [54, 54]     -> 52 + 52 = 104 slots
+    # pages: [54, 54, 27] -> 52 + 52 + 25 = 129 slots
+    #
+    # minecraft:container admite como máximo 256 entradas; MDVMounts valida
+    # la suma al recargar y omite perfiles paginados inválidos.
+    # pages: [54, 27]
+
     title: '&6Alforjas del Caballo'
     interaction-distance: 3.0
 

@@ -45,6 +45,7 @@ public final class MountMovement {
   private double wallClimbProbeDistance;
   private boolean ceilingCheckEnabled;
   private int ceilingCheckBlocks;
+  private double freeMovementMaxPitch;
 
   // One tiny fixed array per setting: no HashMap lookup and no YAML read in
   // the movement loop. Values are loaded only on /mdvmounts reload.
@@ -117,6 +118,10 @@ public final class MountMovement {
     ceilingCheckBlocks = Math.max(1, plugin.getConfig().getInt(
         "control.wall-climbing.ceiling-check.blocks",
         3));
+
+    freeMovementMaxPitch = Math.max(0.0D, plugin.getConfig().getDouble(
+        "control.mount-rotation-max-pitch",
+        45.0D));
 
     loadMovementProfiles();
 
@@ -254,7 +259,6 @@ public final class MountMovement {
   }
 
   private void applyInput(MountSession session, Input input) {
-    Player player = session.player();
     LivingEntity mount = session.mount();
 
     applyRiderRotation(session);
@@ -371,6 +375,7 @@ public final class MountMovement {
       Input input) {
 
     LivingEntity mount = session.mount();
+
     enterFreeMovement(session);
 
     if (mount.getFallDistance() != 0.0F) {
@@ -393,6 +398,7 @@ public final class MountMovement {
     if (input.isJump()) {
       // Preserve the friend's current flight behaviour: SPACE climbs.
       targetY = baseVerticalSpeed;
+
     } else if (input.isForward() || input.isBackward()) {
       float pitch = session.player().getPitch();
 
@@ -410,7 +416,6 @@ public final class MountMovement {
     boolean hasInput = horizontal != null || input.isJump();
 
     // When the player releases everything, stop once and then stay idle.
-    // We do not keep sending a full zero velocity every server tick.
     if (!hasInput) {
       if (session.manualInputActive()) {
         mount.setVelocity(new Vector(0.0D, 0.0D, 0.0D));
@@ -419,27 +424,68 @@ public final class MountMovement {
       }
 
       // Flying mounts must hover at the exact altitude where the rider
-      // released the controls. Some native flying entities (notably bees)
-      // can reintroduce a tiny vertical velocity even with gravity disabled.
-      // Only read the current velocity and correct Y when it actually moved:
-      // no direction math, attribute lookup, block scan or redundant write.
+      // released the controls.
       if (session.type() == MountType.FLYING) {
         Vector velocity = mount.getVelocity();
+
         if (Math.abs(velocity.getY()) > 0.0001D) {
           velocity.setY(0.0D);
           mount.setVelocity(velocity);
         }
       }
+
       return;
     }
 
-    double x = horizontal == null ? 0.0D : horizontal.getX();
-    double z = horizontal == null ? 0.0D : horizontal.getZ();
+    double x = horizontal == null
+        ? 0.0D
+        : horizontal.getX();
 
-    // Immediate WASD response. The previous acceleration interpolation was the
-    // source of the delayed/heavy feeling.
-    mount.setVelocity(new Vector(x, targetY, z));
+    double z = horizontal == null
+        ? 0.0D
+        : horizontal.getZ();
+
+    // Immediate WASD response.
+    Vector velocity = new Vector(x, targetY, z);
+
+    mount.setVelocity(velocity);
+
+    // Keep the mount visually aligned with its movement.
+    applyFreeMovementRotation(session, velocity);
+
     session.setManualInputActive(true);
+  }
+
+  private void applyFreeMovementRotation(
+      MountSession session,
+      Vector velocity) {
+
+    Player player = session.player();
+    LivingEntity mount = session.mount();
+
+    double horizontalSpeed = Math.sqrt(
+        velocity.getX() * velocity.getX()
+            + velocity.getZ() * velocity.getZ());
+
+    double verticalSpeed = velocity.getY();
+
+    float yaw = player.getYaw();
+    float pitch = 0.0F;
+
+    if (horizontalSpeed > 0.001D
+        || Math.abs(verticalSpeed) > 0.001D) {
+
+      pitch = (float) Math.toDegrees(
+          Math.atan2(
+              -verticalSpeed,
+              Math.max(horizontalSpeed, 0.001D)));
+
+      float maxPitch = (float) freeMovementMaxPitch;
+
+      pitch = Math.max(-maxPitch, Math.min(maxPitch, pitch));
+    }
+
+    mount.setRotation(yaw, pitch);
   }
 
   /**
@@ -524,7 +570,7 @@ public final class MountMovement {
     double cos = session.cachedYawCos();
 
     double x = (-sin * forwardInput + cos * strafeInput) * speed;
-    double z = ( cos * forwardInput + sin * strafeInput) * speed;
+    double z = (cos * forwardInput + sin * strafeInput) * speed;
 
     return new Vector(x, 0.0D, z);
   }

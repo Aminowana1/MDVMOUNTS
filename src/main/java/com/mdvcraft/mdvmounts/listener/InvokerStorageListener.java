@@ -37,11 +37,11 @@ public final class InvokerStorageListener implements Listener {
      * Storage opening and post-invocation binding are independent:
      *
      * control.storage-open-interaction
-     *   -> which click opens the already-bound storage.
+     * -> which click opens the already-bound storage.
      *
      * control.storage-invocation-interaction
-     *   -> which click arms the short post-summon binding window.
-     *      AUTO listens to every supported click combination.
+     * -> which click arms the short post-summon binding window.
+     * AUTO listens to every supported click combination.
      *
      * Storage always gets first chance. If it actually opens, the click is
      * consumed and no binding is armed. Otherwise the configured invocation
@@ -188,8 +188,8 @@ public final class InvokerStorageListener implements Listener {
             ItemStack offhand = player.getInventory().getItemInOffHand();
             if (storageManager.isActiveInvoker(offhand, session)
                     || (rawSlot >= 0 && rawSlot < topSize
-                        && storageManager.preventNestedInvokers()
-                        && storageManager.isStorageInvoker(offhand))) {
+                            && storageManager.preventNestedInvokers()
+                            && storageManager.isStorageInvoker(offhand))) {
                 event.setCancelled(true);
                 return;
             }
@@ -257,7 +257,7 @@ public final class InvokerStorageListener implements Listener {
 
         if (storageManager.isActiveInvoker(event.getOldCursor(), session)
                 || (storageManager.preventNestedInvokers()
-                    && storageManager.isStorageInvoker(event.getOldCursor()))) {
+                        && storageManager.isStorageInvoker(event.getOldCursor()))) {
             event.setCancelled(true);
             return;
         }

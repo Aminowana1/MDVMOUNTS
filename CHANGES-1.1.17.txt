@@ -1,0 +1,25 @@
+MDVMounts 1.1.17
+
+Base: 1.1.16.
+
+MERGE DE FUNCIONES
+- Mantiene y refuerza la protección de caída del pasajero sin reintroducir daño a la montura.
+- Conserva el arreglo de caída de 1.1.15/1.1.16 para no perder fallDistance ni romper la velocidad horizontal en el aire.
+- Conserva mdv_mount_rider_fall_protection solo para el pasajero.
+- Conserva la eliminación de la montura y el cooldown al desconectarse.
+- Mantiene ITEM_SWAP como input configurable para habilidades en Java.
+- Mantiene SPRINT/JUMP/SNEAK/WASD como inputs alternativos configurables.
+- Mantiene la protección opcional contra sofocación del jinete.
+- Mantiene el ceiling-check para monturas trepadoras.
+- Mejora la protección de caída del jinete en la versión 1.1.17 sin alterar el daño natural de la montura.
+- NO reintroduce ninguna mecánica camel-normal-jump ni ProtocolLib.
+
+BEDROCK
+- Corrige compatibilidad Bedrock para skills sin depender de una dependencia dura de Floodgate/Geyser.
+- Detecta Bedrock opcionalmente mediante Floodgate 2.x.
+- Hace fallback con la API de Geyser si Floodgate API no está disponible.
+- La habilidad Bedrock se activa con click derecho mientras está montado.
+- Los inputs Java (SPRINT/ITEM_SWAP) se ignoran para jugadores Bedrock.
+- El click derecho puede consumirse solo cuando una skill realmente se ejecuta.
+- Añade debounce configurable para evitar doble disparo por un solo toque.
+- El ataque Bedrock se filtra para no activar la skill si el jugador lleva un arma en la mano.
