@@ -2,7 +2,6 @@ package com.mdvcraft.mdvmounts.listener;
 
 import com.mdvcraft.mdvmounts.skill.MountSkillManager;
 
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;

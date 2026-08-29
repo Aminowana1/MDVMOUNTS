@@ -136,6 +136,16 @@ public final class MountManager {
      * when Bukkit is already processing fall damage for a mounted player.
      */
     public boolean protectsRiderFromFall(Entity vehicle) {
+
+        boolean enforcePreventFallDamage = plugin
+                .getConfig().getBoolean("control.rider-protection.enforce-prevent-fall-damage", false);
+
+        if (enforcePreventFallDamage) {
+            Bukkit.getConsoleSender()
+                    .sendMessage("MDVMounts: Protect from fall damage is enforced, no fall damage was taken.");
+            return true;
+        }
+
         return vehicle != null
                 && riderFallProtectionTag != null
                 && !riderFallProtectionTag.isBlank()

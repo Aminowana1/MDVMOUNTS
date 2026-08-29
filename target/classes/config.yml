@@ -58,6 +58,10 @@ control:
   # La entidad gira con la cámara del jinete.
   rotate-mount-with-rider: true
 
+  # Máxima rotación visual en grados cuando una montura de movilidad libre se mueve de forma vertical.
+  # Va desde 0 hasta 90.
+  mount-rotation-max-pitch: 45.0
+
   # Profundidad máxima que una montura FLYING puede tolerar bajo el agua.
   # Al alcanzar esta profundidad, el jinete se desmonta automáticamente.
   # Solo se comprueba en monturas voladoras que YA están dentro del agua.
@@ -66,9 +70,12 @@ control:
 
   # Protección de confort del jinete.
   rider-protection:
-    # Evita sofocación del jugador si una montura grande lo empuja dentro
-    # de un bloque. NO protege a la montura del daño de caída.
+    # Evita que una montura grande meta al jugador
+    # dentro de un bloque y reciba daño por sofocación.
     prevent-suffocation-damage: true
+
+    # Siempre bloquear el daño por caída al jugador cuando usa una montura.
+    enforce-prevent-fall-damage: false
 
   # Acción usada para abrir el almacenamiento del invocador cuando SU
   # montura está invocada y dentro de la distancia configurada.
